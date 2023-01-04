@@ -1,0 +1,821 @@
+---
+title: ""
+author: ""
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(ggforce)
+knitr::opts_chunk$set(echo = F, fig.height=4, fig.width=6,comment=NA)
+setwd('C:\\Jupyter\\Análise de regressão\\Trabalho 1\\')
+
+interval_color='#7777ff'
+```
+
+\large \begin{center}
+	\textbf{UNIVERSIDADE FEDERAL DO RIO DE JANEIRO}\\
+	
+Instituto de Matemática\\
+
+Análise de Regressão\\
+
+\vspace{250 pt}
+
+\textbf{{\Large MODELO DE REGRESSÃO LINEAR MÚLTIPLA
+}}\\
+
+Trabalho aplicado\\
+
+\vspace{160 pt}
+\begin{flushright}
+	\textbf{Aluno:} Silvaneo Vieira dos Santos Junior\\
+	
+	\textbf{Professora:} Mariane Branco Alves\\
+	
+	
+\end{flushright}
+\vspace{100 pt}
+
+Rio de Janeiro, 4 de novembro de 2020.
+
+\end{center}
+
+\pagebreak
+
+# Introdução
+
+\normalsize
+
+Este trabalho consiste na construção e avaliação de modelos de regressão linear múltipla em um conjunto de dados escolhido pelo aluno. O banco de dados escolhido para este trabalho é o conjunto de dados flor Iris (ou conjunto de dados Iris de Fisher), que contém dados sobre uma amostra de 150 flores Iris, onde foram medidos e registrados 5 valores de interesse: comprimento da sépala, largura da sépala, comprimento da pétala, largura da pétala e espécie. Este trabalho é uma continuação do trabalho anterior, sendo que desta vez usaremos comprimento da pétala e a espécie da flor como variáveis explicadoras e usaremos a largura da pétala como variável a ser explicada. Escolhemos não utilizar as variáveis comprimento e largura da sépala, pois a espécie se mostrou uma adição mais interessante ao modelo e incluir todas as variáveis tornaria o trabalho muito extenso. Vale observar que vários modelos com várias combinações de variáveis explicativas foram testados, mas, para manter este trabalho dentro do limite estipulado de páginas, omitiremos os modelos menos interessantes e mostraremos apenas dois modelos (que são equivalentes).
+
+Destaco que os comprimentos e larguras do banco de dados estão em centímetros, além disso, temos 3 espécies de Flor Iris, sendo estas: Setosa, Versicolor e Virgínica (há 50 amostras de cada espécie no bando de dados). 
+
+Seguindo a orientação dada para este trabalho, os modelos foram treinados com um subconjunto de 100 elementos do banco de dados amostrados com a seed 13031998.
+
+
+O banco de dados usado pode ser encontrado no site: https://archive.ics.uci.edu/ml/datasets/iris
+
+Mais informações sobre o banco de dados podem ser encontradas em: https://en.wikipedia.org/wiki/Iris_flower_data_set
+
+Por último, o código usado para gerar os resultados neste trabalho pode ser encontrado no apêndice.
+
+![](C:/Jupyter\\Análise de regressão\\Trabalho 1\\setosa.jpg){width=200px} ![](C:/Jupyter\\Análise de regressão\\Trabalho 1\\versicolor.jpg){width=200px} ![](C:/Jupyter\\Análise de regressão\\Trabalho 1\\virginica.jpg){width=200px}
+
+Imagens: 3 exemplos de flor Iris. A flor à esquerda pertence a espécie Setosa, a flor no meio pertence a espécie Versicolor e a flor à direita é da espécie Virgínica.
+
+\pagebreak
+
+# Análise exploratória
+
+No banco de dados a espécie da flor vem como uma coluna com o nome da espécie, ao invés de utilizar esta coluna diretamente, optamos por criar 3 novas variáveis binárias que indicam a espécie da flor:
+
+$$Se_i = 
+     \begin{cases}
+       \text{1,} &\quad\text{se a }i\text{-ésima amostra for da espécie Setosa.}\\
+       \text{0,} &\quad\text{caso contrário.}\\
+     \end{cases}$$
+     
+$$Ve_i = 
+     \begin{cases}
+       \text{1,} &\quad\text{se a }i\text{-ésima amostra for da espécie Versicolor.}\\
+       \text{0,} &\quad\text{caso contrário.}\\
+     \end{cases}$$
+     
+$$Vi_i = 
+     \begin{cases}
+       \text{1,} &\quad\text{se a }i\text{-ésima amostra for da espécie Virgínica.}\\
+       \text{0,} &\quad\text{caso contrário.}\\
+     \end{cases}$$
+
+```{r include=FALSE}
+dados=read.csv('iris.data',header=F)
+names(dados)=c('sepal_length','sepal_width','petal_length','petal_width','species')
+dados=dados[,3:5]
+dados=cbind(dados,as.numeric(dados$species=='Iris-setosa'),as.numeric(dados$species=='Iris-versicolor'),as.numeric(dados$species=='Iris-virginica'))
+names(dados)=c('petal_length','petal_width','species','Se','Ve','Vi')
+print(summary(dados))
+```
+
+Como já vimos anteriormente, há forte relação linear entre o tamanho da pétala e a largura da pétala, mostraremos a seguir o gráfico de dispersão entre essas variáveis. Não há necessidade de mostrar o gráfico de dispersão das outras variáveis, pois são binárias, porém há outras gráficos que podem ser interessantes de se visualizar:
+
+```{r fig.height = 5,fig.width = 8}
+ggplot(dados) + 
+    geom_point(aes(petal_length,petal_width,color=species))+
+  theme_bw()
+```
+
+```{r fig.show="hold", out.width="50%",fig.height = 6}
+ggplot(dados) + 
+    geom_boxplot(aes(species,petal_length,fill=species))+
+  theme_bw()
+
+ggplot(dados) + 
+    geom_boxplot(aes(species,petal_width,fill=species))+
+  theme_bw()
+```
+
+Observe que o tamanho da pétala parece ter forte relação linear com a largura da pétala (como esperado), além disso podemos ver que há diferenças significativas entre as médias do comprimento e da largura da pétala entre as espécies.
+
+Para verificar se há problemas de colinearidade entre as variáveis, seguiremos o procedimento descrito na seção 3.9 do Montgomery e obteremos a matriz $W'W$ definida na seção 3.7:
+
+```{r}
+print(cor(dados[,c(2,4,5,6)]))
+```
+
+Para verificar se há problemas de colinearidade, deveríamos calcular $(W'W)^{-1}$, porém esta matriz é computacionalmente singular ("reciprocal condition number = 1.40444e-16", segundo o $R$), assim, como não conheço outra forma de verificar a multicolinearidade, não irei adiante com avaliações sobre este problema. Vale observar que, apesar de ser computacionalmente não invertível, a matriz $W'W$ ainda nos dá indícios de que há multicolinearidade, afinal, a matriz $W'W$ é também a matriz de correlação entre as variáveis (no Montgomery, $W$ é apresentada como a matriz $X$ de dados após a padronização "Unit Length Scaling" das colunas), assim, podemos observar que o coeficiente de correlação de algumas variáveis é bem alto em módulo, indicando uma forte relação linear entre as variáveis, em especial, o tamanho da pétala tem uma forte relação linear com as variáveis indicadoras $Ve$ e $Vi$, porém, acredito que esta forte relação linear não trará problemas para os modelos adiante, pois a forte correlação é causada pela diferença entre as médias das espécies (já verificada visualmente através dos gráficos anteriores).
+
+Por último, devemos nos preocupar com a dependência linear entre as variáveis categóricas e o intercepto do modelo, contudo, adiaremos a discussão deste assunto para a próxima seção.
+
+\pagebreak
+
+```{r}
+set.seed(13031998)
+dados_originais=dados
+amostra=sample(c(1:150),100,replace=FALSE)
+dados=dados[amostra,]
+```
+
+# Modelo 4: Tamanho da pétala e espécie
+
+Ao elaborar um modelo para estes dados, uma pergunta muito importante deve ser respondida: Devemos usar intercepto?
+
+Neste problema, usar o intercepto não tem impacto significativo na qualidade do modelo (logo a frente veremos melhor o porquê), mas tem um impacto significativo na interpretação das variáveis. Primeiro observe que, se usarmos um modelo com intercepto, então não poderemos usar uma das variáveis indicadoras ($Se$,$Ve$,$Vi$), pois:
+
+$$Se_i+Ve_i+Vi_i=1,\ \forall i$$
+
+Ou seja, ao montar a matriz $X$, se usarmos as três variáveis indicadoras e o intercepto, $X'X$ será singular, pois $X$ terá uma coluna que pode ser escrita como combinação linear das outras (a coluna do intercepto é a soma das colunas das variáveis indicadoras), assim devemos escolher entre dois modelos:
+
+$$\text{Modelo 4.1: }\quad y_i=\beta_0 + \beta_1x_i+\beta_2Se_i+\beta_3Vi_i + \epsilon_i$$
+
+$$\text{Modelo 4.2: }\quad y_i=\beta^*_1x_i+\beta^*_2Se_i+\beta^*_3Ve_i+\beta^*_4Vi_i + \epsilon_i$$
+
+As variáveis $y_i$ e $x_i$ representam, respectivamente, a largura e o tamanho da pétala da $i$-ésima amostra e $\epsilon_i$ é um ruído com distribuição normal de média $0$ e variância $\sigma^2$ desconhecida. Vale observar que a escolha de eliminar a variável $Ve$ no primeiro modelo é arbitrária, porém, faz mais sentido eliminar $Ve$ ou $Vi$, pois (como veremos adiante), as espécies Versicolor e Virgínica tem comportamento semelhante.
+
+É de se questionar o porquê do uso de um único modelo para todas as espécies ao invés de um modelo para cada espécie, esta escolha se deve a crença de que a sensibilidade da largura da pétala em relação ao tamanho da pétala é igual em todas as espécies, havendo diferença apenas entre a largura média das pétalas, assim, compartilharemos o parâmetro $\beta_1$ e $\beta^*_1$ entre todas as espécies. Essa crença é validada pelo gráfico de dispersão apresentado na seção anterior.
+
+Antes de prosseguirmos, faz-se necessário observar uma diferença teórica entre os modelos 4.1 e 4.2. Uma vez que o modelo 4.2 não possui intercepto, temos que $\mathbb{P}(\widehat{\mu}_{\vec{x_0}}=0|\vec{x_{0}}=\vec{0})=1$, ou seja, temos $100\%$ de confiança sobre o valor de $\mu_{\vec{x}_0}$, porém, por construção, $\vec{x}_0=\vec{0}$ não é um valor observável (dentro do nosso modelo, estamos supondo que toda flor Iris observável é da espécie Setosa, Versicolor ou Virgínica), logo esta constatação não trás nenhuma implicação prática no nosso modelo, ainda assim, pessoalmente, considero este resultado indesejável, pois a restrição sobre a espécie não está explícita na equação do modelo
+
+Como já foi visto, no modelo 4.1, $\beta_0$ representa a largura média das pétalas quando todas as outras variáveis são $0$, $\beta_1$ representa a variação na largura média das pétalas ao se variar o tamanho da pétala. Como $Se$ assume apenas os valores $0$ e $1$, temos que $\beta_2$ representa o efeito da espécie Setosa na largura média das pétalas (uma interpretação análoga pode ser feita para $\beta_3$). Com isto, sendo $\mu_i$ o valor esperado da largura da pétala do $i$-ésimo elemento da amostra, temos que:
+
+$$\mu_i = 
+     \begin{cases}
+       \beta_0 + \beta_1x_i\text{,} &\quad\text{se a }i\text{-ésima amostra for da espécie Versicolor.}\\
+       (\beta_0+\beta_2) + \beta_1x_i\text{,} &\quad\text{se a }i\text{-ésima amostra for da espécie Setosa.}\\
+       (\beta_0+\beta_3) + \beta_1x_i\text{,} &\quad\text{se a }i\text{-ésima amostra for da espécie Virgínica.}\\
+     \end{cases}$$
+     
+No modelo 4.2, as interpretações são diferentes, pois temos que, neste modelo:
+
+$$\mu_i = 
+     \begin{cases}
+       \beta^*_2 + \beta^*_1x_i\text{,} &\quad\text{se a }i\text{-ésima amostra for da espécie Setosa.}\\
+       \beta^*_3 + \beta^*_1x_i\text{,} &\quad\text{se a }i\text{-ésima amostra for da espécie Versicolor.}\\
+       \beta^*_4 + \beta^*_1x_i\text{,} &\quad\text{se a }i\text{-ésima amostra for da espécie Virgínica.}\\
+     \end{cases}$$
+     
+Donde observamos que $\beta^*_2$,$\beta^*_3$ e $\beta^*_4$ são os valores esperados para a média do modelo quando o tamanho da pétala é $0$ e a flor é, respectivamente, da espécie Setosa, Versicolor e Virgínica. Apesar das interpretações distintas entre os modelo, pode ser mostrado que eles são equivalentes (no sentido de que as previsões pontuais e intervalares são iguais uma a uma) e que:
+
+$$ \beta^*_1 = \beta_1\quad\quad \beta^*_2 = \beta_0+\beta_2\quad\quad \beta^*_3 = \beta_0\quad\quad \beta^*_4 = \beta_0+\beta_3$$
+
+A interpretação que obtemos no modelo 4.1 é particularmente útil, pois através dela é fácil perceber se há diferenças significativas entre as espécies, por exemplo, se aceitarmos a hipótese de que $\beta_3=0$, então aceitamos que não existe diferença significativa entre as médias das espécies Versicolor e Virgínica, i.e., $\beta_0=\beta^*_3=\beta^*_4$. Um problema que pode ocorrer no modelo 4.1 é que se, por exemplo, temos $\beta^*_2=\beta^*_4\neq\beta^*_3$, então $\beta_3=\beta_2\neq0$, ou seja, $\beta_3$ e $\beta_2$ são significativos para o modelo (pois são diferentes de $0$), porém o uso das duas variáveis é desnecessário, pois poderíamos agrupar as duas espécies (já que não haveria diferença entre elas) e utilizar uma variável a menos no modelo, por isso, é importante a decisão de qual variável eliminar ao se usar o intercepto.
+
+O modelo 4.1 é interessante para o caso onde temos uma média global (comum a todas as amostras) e que pode ser afetada por outras características dos dados, já o modelo 4.2 é mais interessante quando cada amostra pertence a um grupo distinto e a média dos grupos são distintas entre si. Um exemplo onde o modelo 4.1 é mais interessante do que o 4.2, seria se estivéssemos tentando estimar o nível de colesterol de uma população usando a altura, uma indicadora se a pessoa tem diabetes e uma indicadora de que a pessoa tem pressão alta, neste caso teríamos uma média global ($\beta_0$) que muda se um indivíduo pertence a um certo grupo (com diabetes ou com pressão alta), sendo que um mesmo indivíduo pode pertencer a dois grupos ou a nenhum. Vale destacar que os modelos são equivalentes, apenas a interpretação dos coeficientes é que muda, sendo que a forma como se interpreta as variáveis em um modelo pode ser mais interessante a depender da natureza do problema com que estamos lidando.
+
+Com estas diferenças em mente, calcularemos os coeficientes de ambos os modelos.
+
+Primeiramente, para efeito de comparação, segue o summary resumido do modelo 3 utilizado no trabalho anterior:
+
+```{r, message=FALSE, warning=FALSE}
+regression=lm(dados$petal_width~dados$petal_length)
+beta_0=regression$coefficients[1]
+beta_1=regression$coefficients[2]
+
+beta=matrix(c(beta_0,beta_1),2,1)
+
+Y=as.matrix(dados[,5:5])
+n=length(Y)
+
+X=as.matrix(cbind(rep(1,n),dados[,2:2]))
+
+sales_model=function(x){x%*%beta}
+
+print(summary(regression)[[4]])
+cat(paste('\n',
+'Estatística R^2:          ',summary(regression)[["r.squared"]],'\n',
+'Estatística R^2 ajustada: ',summary(regression)[["adj.r.squared"]],'\n',
+'Estatística F:            ',summary(regression)[["fstatistic"]][1],' com ',summary(regression)[["fstatistic"]][2],' ',summary(regression)[["fstatistic"]][3],' graus de liberdade',sep=''))
+```
+
+Agora, segue o summary resumido do modelo 4.1:
+
+```{r, message=FALSE, warning=FALSE}
+regression=lm(dados$petal_width~dados$petal_length+dados$Se+dados$Vi)
+
+Y=as.matrix(dados[,2:2])
+n=length(Y)
+
+beta=matrix(regression$coefficients,length(regression$coefficients),1)
+
+X=as.matrix(cbind(rep(1,n),dados[,c(1,4,6)]))
+
+petal_model=function(x){x%*%beta}
+
+sigma2_chap=sum((Y-petal_model(X))**2)/(n-2)
+
+calcula_var_em_x0=function(raw_x0){
+   x0=cbind(rep(1,length(raw_x0)),raw_x0)
+   sigma2_chap*(x0%*%solve(t(X)%*%X)%*%t(x0))
+}
+
+#print(sigma2_chap)
+#print(calcula_var_em_x0(matrix(c(0,0,0),1,3)))
+#print(calcula_var_em_x0(matrix(c(0,1,0),1,3)))
+#print(calcula_var_em_x0(matrix(c(0,0,1),1,3)))
+
+print(summary(regression)[[4]])
+cat(paste('\n',
+'Estatística R^2:          ',summary(regression)[["r.squared"]],'\n',
+'Estatística R^2 ajustada: ',summary(regression)[["adj.r.squared"]],'\n',
+'Estatística F:            ',summary(regression)[["fstatistic"]][1],' com ',summary(regression)[["fstatistic"]][2],' ',summary(regression)[["fstatistic"]][3],' graus de liberdade',sep=''))
+```
+
+Perceba que houve um aumento razoável na estatística $R^2$ ajustada, a inclusão da espécie gerou um aumento de $2.21\%$ na quantidade de variância explicada pelo modelo. Pode ser observado também que houve uma grande mudança no valor do coeficiente associado ao tamanho da pétala, sendo que no modelo 3 este coeficiente tinha valor $0.416419$, já no modelo 4.1, este valor é $0.22974$. Como estamos falando da mesma variável explicativa e mesma variável resposta, estes valores são comparáveis mesmo sem eliminarmos a dimensão dos dados, assim podemos observar que no modelo 3, a largura da pétala é consideravelmente mais sensível a variações no tamanho da pétala. Por último, no modelo 4.1 o intercepto tem o $p-valor$ superior ao nível de significância adotado (estamos usando o mesmo nível de significância do trabalho anterior), então aceitamos a hipótese nula de que $\beta_0=0$.
+
+Segue agora o summary resumido do modelo 4.2:
+
+```{r, message=FALSE, warning=FALSE}
+dados_backup=dados
+regression=lm(dados$petal_width~dados$petal_length+dados$Se+dados$Ve+dados$Vi-1)
+
+Y=as.matrix(dados[,2:2])
+n=length(Y)
+
+beta=matrix(regression$coefficients,length(regression$coefficients),1)
+
+#X=as.matrix(cbind(rep(1,n),dados[,c(1,4,5,6)]))
+X=as.matrix(dados[,c(1,4,5,6)])
+
+petal_model=function(x){x%*%beta}
+
+sigma2_chap=sum((Y-petal_model(X))**2)/(n-2)
+
+calcula_var_em_x0=function(raw_x0){
+   #x0=cbind(rep(1,length(raw_x0)),raw_x0)
+   x0=raw_x0
+   sigma2_chap*(x0%*%solve(t(X)%*%X)%*%t(x0))
+}
+
+#print(sigma2_chap)
+#print(calcula_var_em_x0(matrix(c(0,0,1,0),1,4)))
+#print(calcula_var_em_x0(matrix(c(0,1,0,0),1,4)))
+#print(calcula_var_em_x0(matrix(c(0,0,0,1),1,4)))
+
+print(summary(regression)[[4]])
+cat(paste('\n',
+'Estatística R^2:          ',summary(regression)[["r.squared"]],'\n',
+'Estatística R^2 ajustada: ',summary(regression)[["adj.r.squared"]],'\n',
+'Estatística F:            ',summary(regression)[["fstatistic"]][1],' com ',summary(regression)[["fstatistic"]][2],' ',summary(regression)[["fstatistic"]][3],' graus de liberdade',sep=''))
+```
+
+Primeiro observe que os valores dos coeficientes do modelo 4.2 podem ser obtidos a partir do modelo 4.1 (conforme já comentamos antes), além disso, pode ser observado que as previsões pontuais dos dois modelos são idênticas. Apesar disso, podemos notar diversas diferenças significativas entre o summary dos modelos. Observe que o coeficiente associado a variável $Ve$ no modelo 4.2 é o mesmo coeficiente associado ao intercepto do modelo 4.1, assim, tanto seu valor pontual como o desvio padrão e o $p-valor$ associados a eles são idênticos e possuem a mesma interpretação, o mesmo pode ser observado sobre o coeficiente associado ao tamanho da pétala. Em contrapartida, os coeficientes associados as variáveis $Se$ e $Vi$ são diferentes entre os modelos e as hipóteses testadas associadas a estes coeficientes também são diferentes:
+
+ * No modelo 4.1 testamos se:
+$$\beta_0=0\text{, que equivale a testar se }\quad\beta^*_3=0  $$ 
+$$\beta_1=0\text{, que equivale a testar se }\quad\beta^*_1=0  $$
+$$\beta_2=0\text{, que equivale a testar se }\quad\beta^*_2=\beta^*_3  $$
+$$\beta_3=0 \text{, que equivale a testar se } \quad\beta^*_4=\beta^*_3$$
+
+ * No modelo 4.2 testamos se:
+$$\beta^*_1=0 \text{, que equivale a testar se } \quad\beta_1=0$$
+$$\beta^*_2=0 \text{, que equivale a testar se } \quad\beta_2=-\beta_0$$
+$$\beta^*_3=0 \text{, que equivale a testar se } \quad\beta_0=0$$
+$$\beta^*_4=0 \text{, que equivale a testar se } \quad\beta_3=-\beta_0$$
+  
+A diferença entre as hipóteses testadas entre os modelo é grande e, ao meu ver, ambos os testes são importantes (tanto é valido saber se os coeficientes associados a cada variável são significativos, quanto é relevante saber se os coeficientes são iguais entre si). Sobre os testes que são diferentes entre os modelos, aceitamos a hipótese de que $\beta^*_2=0$ (o $p-valor$ associado é 0.105010) e rejeitamos a hipótese de que $\beta^*_4=0$.
+
+Podemos ver que nos testes do modelo 4.2, aceitamos a hipótese de que $\beta^*_2=0$, que equivale a $\beta_2=-\beta_0$, porém é de se questionar se esta hipótese é validada pelo modelo 4.1. Infelizmente, o summary do modelo 4.1 não nos ajuda a verificar esta hipótese, pois lá não encontramos o intervalo de confiança conjunto para $\beta_2$ e $\beta_0$ (apenas os intervalos individuais), ainda assim, sabendo que a distribuição conjunta de $\beta_2$ e $\beta_0$ é normal bivariada e usando $\widehat{\sigma}^2(X'X)^{-1}$ como estimadora da matriz de covariância de $\vec{\beta}$, então podemos calcular a região de confiança de $\beta_2$ e $\beta_0$. A seguir temos um gráfico com a região de confiança a $95\%$ para as variáveis em questão:
+
+```{r, message=FALSE, warning=FALSE}
+beta0=matrix(c(0.5,-0.5),2,1)
+mu0=matrix(c(0.2846182,-0.3810776),2,1)
+matrix_cov=solve(t(X)%*%X)*sigma2_chap
+
+W=solve(matrix_cov[c(1,3),c(1,3)])
+a=W[1,1]
+b=W[2,2]
+c=W[1,2]
+V=eigen(W)$vectors
+x0=matrix(c(0.1577037,0.2279441)+mu0,2,1)
+xt=c()
+yt=c()  
+for(i in c(0:20)/10){
+  x=cos(i*pi)*sqrt(qchisq(0.95,96)/1560.2310)
+  y=sin(i*pi)*sqrt(qchisq(0.95,96)/23.3691)
+  x0=x*V[,1:1]+y*V[,2:2]+mu0
+  xt=c(xt,x0[1])
+  yt=c(yt,x0[2])
+  #print(pchisq(t((x0-mu0))%*%W%*%(x0-mu0),96))
+}
+
+
+pl=ggplot()+
+  geom_ellipse(aes(x0=mu0[1],y0=mu0[2],a=sqrt(qchisq(0.95,96)/1560.2310),b=sqrt(qchisq(0.95,96)/23.3691),angle=0.9655593,fill='Região de\nconfiança a 95%'),alpha=0.75)+scale_fill_manual('',values=c('lightblue'))+
+  geom_line(aes(x=c(-2.5,2.5),y=c(2.5,-2.5),color='y=-x'))+scale_color_manual('',values=c('black'))+
+  scale_x_continuous('beta_0',limits=c(-2.5,2.5))+scale_y_continuous('beta_2',limits=c(-2.5,2.5))+
+  theme_bw()
+pl
+```
+
+Podemos observar que a região de confiança está próxima da reta $y=-x$, sendo que esta reta atravessa a região de confiança, corroborando com a hipótese de que $\beta_2=-\beta_0$.
+
+Algo que chama muita atenção entre os summary's é que, mesmo com os modelos tendo as mesmas estimativas pontuais e intervalar para cada elemento da amostra, a estatística $R^2$ observada nos summary's é significativamente diferente! De fato, a estatística $R^2$ de um modelo com intercepto não é comparável à estatística $R^2$ de um modelo sem intercepto. Não exploraremos mais este tópico, pois a seção 2.10 do Montgomery oferece uma abordagem muito superior ao que poderia ser oferecido no escopo deste trabalho, posto isto, me limito a observar que, no modelo sem intercepto, a variância que seria explicada pelo intercepto é distribuída entre as variáveis indicadoras, desta forma, a estatística $R^2$ neste modelo é "inflada" pela ausência de intercepto.
+
+Segue agora a ANOVA do modelo 4.1:
+
+```{r, message=FALSE, warning=FALSE}
+dados_backup=dados
+regression=lm(dados$petal_width~dados$Vi+dados$Se+dados$petal_length)
+print(anova(regression))
+```
+
+Agora, segue a ANOVA do modelo 4.2:
+
+```{r, message=FALSE, warning=FALSE}
+dados_backup=dados
+regression=lm(dados$petal_width~dados$Ve+dados$Vi+dados$Se-1+dados$petal_length)
+print(anova(regression))
+```
+
+Gostaria de destacar que no modelo 4.2, se $\beta_1^*$ estiver entrando por último na regressão, podemos mudar a ordem de $\beta_2^*$, $\beta_3^*$ e $\beta_4^*$ sem alterar o resultado da ANOVA (não mostrarei outras ANOVA's com ordens distintas para economizar espaço), isso acontece devido ao fato de que as colunas de cada variável indicadora são ortogonais entre si (para mais informações sobre o assunto, ver a seção 3.3.3 do Montgomery), logo, antes da inserção de $\beta_1^*$, todas as colunas associadas a variáveis são ortogonais entre si, assim a variância explicada por cada uma destas variáveis não é afetada pela inserção prévia das outras. Esse fato é particularmente útil, pois agora a soma dos quadrados da regressão para cada coeficiente é comparável com os outros (exceto $\beta_1$, pois a variância explicada por este coeficiente depende dos outros coeficientes já inseridos, afinal a coluna correspondente a este coeficiente não é ortogonal as outras). Observe que a quantidade da variância explicada por cada coeficiente está associada a quanto a média do conjunto associado a este coeficiente se distancia de zero, assim, podemos ver que $\beta_4^*$ é mais relevante para o modelo do que as outras e sabemos que a causa disso é que a espécie Vigínica tem a maior largura média da pétala entre as espécies (isso pode ser visto no boxplot da Análise Exploratória de Dados), assim, a contribuição desta espécie para a variância total é maior.
+
+A característica observada anteriormente para o modelo 4.2 não se verifica para o modelo 4.1, pois neste modelo apenas as colunas associadas a $\beta_2$ e $\beta_3$ são ortogonais entre si, mas nenhuma delas é ortogonal ao intercepto, logo a ordem de inserção das variáveis sempre importa.
+
+Por último, segue um gráfico com os valores observados para a largura da pétala com os valores esperados pelo modelo junto dos I.C. para a média e para a previsão:
+
+```{r fig.height=5, fig.width=7, message=FALSE, warning=FALSE}
+dados_full=dados_backup
+X_full=as.matrix(dados_full[,c(1,4,5,6)])
+Y_full=c()
+Y_min=c()
+Y_max=c()
+Y_min2=c()
+Y_max2=c()
+for(indice in c(1:100)){
+  dados=dados_full[-indice,]
+  regression=lm(dados$petal_width~dados$petal_length+dados$Se+dados$Ve+dados$Vi-1)
+  
+  Y=as.matrix(dados[,2:2])
+  n=length(Y)
+  p=length(regression$coefficients)
+  
+  beta=matrix(regression$coefficients,p,1)
+  
+  #X=as.matrix(cbind(rep(1,n),dados[,c(1,4,5,6)]))
+  X=as.matrix(dados[,c(1,4,5,6)])
+  
+  petal_model=function(x){x%*%beta}
+  
+  sigma2_chap=sum((Y-petal_model(X))**2)/(n-2)
+  
+  calcula_var_em_x0=function(raw_x0){
+     #x0=cbind(rep(1,length(raw_x0)),raw_x0)
+     x0=raw_x0
+     sigma2_chap*(x0%*%solve(t(X)%*%X)%*%t(x0))}
+     
+  Y_full=c(Y_full,petal_model(X_full[indice:indice,]))
+  Y_min=c(Y_min,petal_model(X_full[indice:indice,])+qt(0.025,n-p)*matrix(sqrt(diag(sigma2_chap+calcula_var_em_x0(matrix(X_full[indice,],1,4)))),1,1))
+  Y_max=c(Y_max,petal_model(X_full[indice:indice,])+qt(0.975,n-p)*matrix(sqrt(diag(sigma2_chap+calcula_var_em_x0(matrix(X_full[indice,],1,4)))),1,1))
+  Y_min2=c(Y_min2,petal_model(X_full[indice:indice,])+qt(0.025,n-p)*matrix(sqrt(diag(calcula_var_em_x0(matrix(X_full[indice,],1,4)))),1,1))
+  Y_max2=c(Y_max2,petal_model(X_full[indice:indice,])+qt(0.975,n-p)*matrix(sqrt(diag(calcula_var_em_x0(matrix(X_full[indice,],1,4)))),1,1))
+}
+
+Y_chap=Y_full
+X=X_full
+Y=as.matrix(dados_full[,2:2])
+
+interval_color='#7777ff'
+alpha=0.5
+plot=ggplot()+
+  geom_ribbon(aes(x=Y_chap,y=Y_chap,
+                  ymin=Y_min,
+                  ymax=Y_max,
+                  fill='I.C. de 95%\npara a previsão'),alpha=alpha)+
+  geom_ribbon(aes(x=Y_chap,y=Y_chap,
+                  ymin=Y_min2,
+                  ymax=Y_max2,
+                  fill='I.C. de 95%\npara a média'),alpha=alpha)+
+  geom_line(aes(Y_chap,Y_chap,
+                color='Função identidade'))+
+  geom_point(aes(Y_chap,Y,shape='Dados\nobservados',color=dados_full$species))+
+  scale_color_manual('',values=c('black','#ff5555','#55ff55','#5555ff'),label=c('Função\nidentidade','Setosa','Vericolor','Virgínica'))+
+  scale_fill_manual('',values=c(interval_color,'lightblue'))+
+  scale_shape('')+
+  scale_y_continuous('Largura da pétala',limits=c(-0.25,2.75))+
+  scale_x_continuous('Largura esperada da pétala',expand=c(0,0))+
+  theme_bw()+labs(title='Modelo 4')
+plot
+```
+
+Podemos observar que os intervalos de confiança para a média são mais estreitos em valores próximos as nuvens de pontos observados, ou seja, temos mais confiança sobre o valor da média em pontos próximos aos valores que já observados (o que é de se esperar). Além disso, podemos observar que há 7 pontos fora do intervalo de confiança para a previsão, o que, novamente, é de se esperar, pois o intervalo é de $95\%$ de confiança, então, o valor esperado para a quantidade de pontos fora do intervalo é 5 (próximo do observado), porém, é de se ressaltar que apenas dados da flor Virgínica caíram fora do intervalo de confiança, o que é um indício de que a variância neste conjunto de dados é diferente da variância nos outros conjuntos (seria interessante testar se a hipótese de homoscedasticidade está sendo respeitada).
+
+```{r fig.height=5, fig.width=7, message=FALSE, warning=FALSE}
+
+dados_full=dados_backup
+X_full=as.matrix(cbind(rep(1,100),dados_full[,c(1)]))
+Y_full=c()
+Y_min=c()
+Y_max=c()
+Y_min2=c()
+Y_max2=c()
+for(indice in c(1:100)){
+  dados=dados_full[-indice,]
+  regression=lm(dados$petal_width~dados$petal_length)
+  
+  Y=as.matrix(dados[,2:2])
+  n=length(Y)
+  p=length(regression$coefficients)
+  
+  beta=matrix(regression$coefficients,p,1)
+  
+  X=as.matrix(cbind(rep(1,n),dados[,c(1)]))
+  #X=as.matrix(dados[,c(1,4,5,6)])
+  
+  petal_model=function(x){x%*%beta}
+  
+  sigma2_chap=sum((Y-petal_model(X))**2)/(n-2)
+  
+  calcula_var_em_x0=function(raw_x0){
+     #x0=cbind(rep(1,length(raw_x0)),raw_x0)
+     x0=raw_x0
+     sigma2_chap*(x0%*%solve(t(X)%*%X)%*%t(x0))}
+     
+  Y_full=c(Y_full,petal_model(X_full[indice:indice,]))
+  Y_min=c(Y_min,petal_model(X_full[indice:indice,])+qt(0.025,n-p)*matrix(sqrt(diag(sigma2_chap+calcula_var_em_x0(matrix(X_full[indice,],1,2)))),1,1))
+  Y_max=c(Y_max,petal_model(X_full[indice:indice,])+qt(0.975,n-p)*matrix(sqrt(diag(sigma2_chap+calcula_var_em_x0(matrix(X_full[indice,],1,2)))),1,1))
+  Y_min2=c(Y_min2,petal_model(X_full[indice:indice,])+qt(0.025,n-p)*matrix(sqrt(diag(calcula_var_em_x0(matrix(X_full[indice,],1,2)))),1,1))
+  Y_max2=c(Y_max2,petal_model(X_full[indice:indice,])+qt(0.975,n-p)*matrix(sqrt(diag(calcula_var_em_x0(matrix(X_full[indice,],1,2)))),1,1))
+}
+
+Y_chap=Y_full
+X=X_full
+Y=as.matrix(dados_full[,2:2])
+
+interval_color='#7777ff'
+alpha=0.5
+plot=ggplot()+
+  geom_ribbon(aes(x=Y_chap,y=Y_chap,
+                  ymin=Y_min,
+                  ymax=Y_max,
+                  fill='I.C. de 95%\npara a previsão'),alpha=alpha)+
+  geom_ribbon(aes(x=Y_chap,y=Y_chap,
+                  ymin=Y_min2,
+                  ymax=Y_max2,
+                  fill='I.C. de 95%\npara a média'),alpha=alpha)+
+  geom_line(aes(Y_chap,Y_chap,
+                color='Função identidade'))+
+  geom_point(aes(Y_chap,Y,shape='Dados\nobservados',color=dados_full$species))+
+  scale_color_manual('',values=c('black','#ff5555','#55ff55','#5555ff'),label=c('Função\nidentidade','Setosa','Vericolor','Virgínica'))+
+  scale_fill_manual('',values=c(interval_color,'lightblue'))+
+  scale_shape('')+
+  scale_y_continuous('Largura da pétala',limits=c(-0.5,3))+
+  scale_x_continuous('Largura esperada da pétala',expand=c(0,0))+
+  theme_bw()+labs(title='Modelo 3')
+plot
+```
+
+Comparando o gráfico dos dois modelos, podemos ver que o modelo 4 representa melhor nossa incerteza, pois dá mais confiança para valores dentro das nuvens de pontos observadas e menos confiança fora dessas nuvens, já no modelo 3, damos confiança a pontos fora das nuvens de dados, mas que estejam entre duas nuvens de dados.
+
+# Conclusão
+
+A partir das análises anteriores, concluímos que há um aumento significativo na qualidade do ajuste do modelo 3 ao se incluir a espécie da flor, além disso, foi possível observar, através da exploração dos modelos 4.1 e 4.2, o efeito da escolha das variáveis explicativas sobre a interpretabilidade do modelo, sendo que certas escolhas de variáveis explicativas favorecem a interpretação de certos tipos de problemas e de dados. Por fim, este trabalho pode ser expandido com a inclusão das outras variáveis no modelo para averiguar se há melhoria na qualidade do ajuste, ademais, pode-se manter a quantidade de variáveis explicativas, mas tentar outras combinações de variáveis. Outra forma de expansão deste trabalho seria explorar se as espécies tem efeito significativo no coeficiente angular da reta (neste trabalho, partimos da hipótese de que a inclinação da reta era a mesma para todas as espécies). Vale lembrar também que não fizemos testes sobre as hipóteses do modelo, desta forma, este trabalho pode ser expandido com estudos sobre este assunto, em particular, com a inclusão de análises sobre os resíduos da regressão.
+
+\pagebreak
+
+# Apêndice
+
+Códigos utilizados:
+
+```{r echo=TRUE,eval=FALSE}
+#Abrindo e organizando os dados
+library(ggplot2)
+interval_color='#7777ff'
+dados=read.csv('iris.data',header=F)
+names(dados)=c('sepal_length','sepal_width','petal_length','petal_width','species')
+dados=dados[,3:5]
+dados=cbind(dados,
+            as.numeric(dados$species=='Iris-setosa'),
+            as.numeric(dados$species=='Iris-versicolor'),
+            as.numeric(dados$species=='Iris-virginica'))
+names(dados)=c('petal_length','petal_width','species','Se','Ve','Vi')
+print(summary(dados))
+
+#Fazenddo gráfico de dispersão
+ggplot(dados) + 
+    geom_point(aes(petal_length,petal_width,color=species))+
+  theme_bw()
+
+#Criando boxplot's
+ggplot(dados) + 
+    geom_boxplot(aes(species,petal_length,fill=species))+
+  theme_bw()
+
+ggplot(dados) + 
+    geom_boxplot(aes(species,petal_width,fill=species))+
+  theme_bw()
+
+#Calculando a matriz de correlação (a matriz (W'W)^-1)
+print(cor(dados[,c(2,4,5,6)]))
+
+#Fixando a semente e amostrando dados
+set.seed(13031998)
+dados_originais=dados
+amostra=sample(c(1:150),100,replace=FALSE)
+dados=dados[amostra,]
+
+#Refazendo regressão do modelo 3 e exibindo o summary
+regression=lm(dados$petal_width~dados$petal_length)
+beta_0=regression$coefficients[1]
+beta_1=regression$coefficients[2]
+
+beta=matrix(c(beta_0,beta_1),2,1)
+
+Y=as.matrix(dados[,5:5])
+n=length(Y)
+
+X=as.matrix(cbind(rep(1,n),dados[,2:2]))
+
+sales_model=function(x){x%*%beta}
+
+print(summary(regression)[[4]])
+cat(paste('\n',
+'Estatística R^2:          ',summary(regression)[["r.squared"]],'\n',
+'Estatística R^2 ajustada: ',summary(regression)[["adj.r.squared"]],'\n',
+'Estatística F:            ',summary(regression)[["fstatistic"]][1],' com ',
+                             summary(regression)[["fstatistic"]][2],' ',
+                             summary(regression)[["fstatistic"]][3],
+                            ' graus de liberdade',sep=''))
+
+#Fazando regressão do modelo 4.1 e exibindo o summary
+regression=lm(dados$petal_width~dados$petal_length+dados$Se+dados$Vi)
+
+Y=as.matrix(dados[,2:2])
+n=length(Y)
+
+beta=matrix(regression$coefficients,length(regression$coefficients),1)
+
+X=as.matrix(cbind(rep(1,n),dados[,c(1,4,6)]))
+
+petal_model=function(x){x%*%beta}
+
+sigma2_chap=sum((Y-petal_model(X))**2)/(n-2)
+
+calcula_var_em_x0=function(raw_x0){
+   x0=cbind(rep(1,length(raw_x0)),raw_x0)
+   sigma2_chap*(x0%*%solve(t(X)%*%X)%*%t(x0))
+}
+
+print(summary(regression)[[4]])
+cat(paste('\n',
+'Estatística R^2:          ',summary(regression)[["r.squared"]],'\n',
+'Estatística R^2 ajustada: ',summary(regression)[["adj.r.squared"]],'\n',
+'Estatística F:            ',summary(regression)[["fstatistic"]][1],' com ',
+                             summary(regression)[["fstatistic"]][2],' ',
+                             summary(regression)[["fstatistic"]][3],
+                             ' graus de liberdade',sep=''))
+
+#Fazendo regressão do modelo 4.2 e exibindo o summary
+dados_backup=dados
+regression=lm(dados$petal_width~dados$petal_length+dados$Se+dados$Ve+dados$Vi-1)
+
+Y=as.matrix(dados[,2:2])
+n=length(Y)
+
+beta=matrix(regression$coefficients,length(regression$coefficients),1)
+
+X=as.matrix(dados[,c(1,4,5,6)])
+
+petal_model=function(x){x%*%beta}
+
+sigma2_chap=sum((Y-petal_model(X))**2)/(n-2)
+
+calcula_var_em_x0=function(raw_x0){
+   x0=raw_x0
+   sigma2_chap*(x0%*%solve(t(X)%*%X)%*%t(x0))
+}
+
+print(summary(regression)[[4]])
+cat(paste('\n',
+'Estatística R^2:          ',summary(regression)[["r.squared"]],'\n',
+'Estatística R^2 ajustada: ',summary(regression)[["adj.r.squared"]],'\n',
+'Estatística F:            ',summary(regression)[["fstatistic"]][1],' com ',
+                             summary(regression)[["fstatistic"]][2],' ',
+                             summary(regression)[["fstatistic"]][3],
+                            ' graus de liberdade',sep=''))
+
+#Exibindo regiao de confiança de beta0 e beta2
+mu0=matrix(c(0.2846182,-0.3810776),2,1)
+matrix_cov=solve(t(X)%*%X)*sigma2_chap
+
+W=solve(matrix_cov[c(1,3),c(1,3)])
+a=W[1,1]
+b=W[2,2]
+c=W[1,2]
+V=eigen(W)$vectors
+x0=matrix(c(0.1577037,0.2279441)+mu0,2,1)
+xt=c()
+yt=c()  
+for(i in c(0:20)/10){
+  x=cos(i*pi)*sqrt(qchisq(0.95,96)/1560.2310)
+  y=sin(i*pi)*sqrt(qchisq(0.95,96)/23.3691)
+  x0=x*V[,1:1]+y*V[,2:2]+mu0
+  xt=c(xt,x0[1])
+  yt=c(yt,x0[2])
+  #print(pchisq(t((x0-mu0))%*%W%*%(x0-mu0),96))
+}
+
+
+pl=ggplot()+
+  geom_ellipse(aes(x0=mu0[1],y0=mu0[2],a=sqrt(qchisq(0.95,96)/1560.2310),b=sqrt(qchisq(0.95,96)/23.3691),angle=0.9655593,fill='Região de\nconfiança a 95%'),alpha=0.75)+scale_fill_manual('',values=c('lightblue'))+
+  geom_line(aes(x=c(-2.5,2.5),y=c(2.5,-2.5),color='y=-x'))+scale_color_manual('',values=c('black'))+
+  scale_x_continuous('beta_0',limits=c(-2.5,2.5))+scale_y_continuous('beta_3',limits=c(-2.5,2.5))+
+  theme_bw()
+pl
+
+#Exibindo a ANOVA do modelo 4.1
+dados_backup=dados
+regression=lm(dados$petal_width~dados$Vi+dados$Se+dados$petal_length)
+print(anova(regression))
+
+#Exibindo a ANOVA do modelo 4.2
+dados_backup=dados
+regression=lm(dados$petal_width~dados$Ve+dados$Vi+dados$Se-1+dados$petal_length)
+print(anova(regression))
+
+#Exibindo a ANOVA do modelo 4.1 com os coeficientes reordenadaos
+dados_backup=dados
+regression=lm(dados$petal_width~dados$petal_length+dados$Se+dados$Vi)
+print(anova(regression))
+
+#Calculando os valores que devem entrar no gráfico com os intervalos de confiança
+#Modelo 4
+#O processo consiste de remover um elemento da amostra,
+#fazer a regressão e armazenar os valores de interesse
+#Há formas mais inteligentes de fazer isso, por exemplo,
+#aproveitando os resíduos PRESS para não ter de refazer a regressão
+#Porém, honestamente, estou com preguiça de pensar muito sobre isso,
+#então vou fazer do jeito simplez ;P
+dados_full=dados_backup
+X_full=as.matrix(dados_full[,c(1,4,5,6)])
+Y_full=c()
+Y_min=c()
+Y_max=c()
+Y_min2=c()
+Y_max2=c()
+for(indice in c(1:100)){
+  dados=dados_full[-indice,]
+  regression=lm(dados$petal_width~dados$petal_length+dados$Se+dados$Ve+dados$Vi-1)
+  
+  Y=as.matrix(dados[,2:2])
+  n=length(Y)
+  p=length(regression$coefficients)
+  
+  beta=matrix(regression$coefficients,p,1)
+  
+  #X=as.matrix(cbind(rep(1,n),dados[,c(1,4,5,6)]))
+  X=as.matrix(dados[,c(1,4,5,6)])
+  
+  petal_model=function(x){x%*%beta}
+  
+  sigma2_chap=sum((Y-petal_model(X))**2)/(n-2)
+  
+  calcula_var_em_x0=function(raw_x0){
+     #x0=cbind(rep(1,length(raw_x0)),raw_x0)
+     x0=raw_x0
+     sigma2_chap*(x0%*%solve(t(X)%*%X)%*%t(x0))}
+     
+  Y_full=c(Y_full,petal_model(X_full[indice:indice,]))
+  Y_min=c(Y_min,petal_model(X_full[indice:indice,])+
+            qt(0.025,n-p)*
+            matrix(sqrt(diag(sigma2_chap+
+                               calcula_var_em_x0(matrix(X_full[indice,],1,4)))),1,1))
+  Y_max=c(Y_max,petal_model(X_full[indice:indice,])+
+            qt(0.975,n-p)*
+            matrix(sqrt(diag(sigma2_chap+
+                               calcula_var_em_x0(matrix(X_full[indice,],1,4)))),1,1))
+  Y_min2=c(Y_min2,petal_model(X_full[indice:indice,])+
+             qt(0.025,n-p)*
+             matrix(sqrt(diag(calcula_var_em_x0(matrix(X_full[indice,],1,4)))),1,1))
+  Y_max2=c(Y_max2,petal_model(X_full[indice:indice,])+
+             qt(0.975,n-p)*
+             matrix(sqrt(diag(calcula_var_em_x0(matrix(X_full[indice,],1,4)))),1,1))
+}
+
+Y_chap=Y_full
+X=X_full
+Y=as.matrix(dados_full[,2:2])
+
+interval_color='#7777ff'
+alpha=0.5
+plot=ggplot()+
+  geom_ribbon(aes(x=Y_chap,y=Y_chap,
+                  ymin=Y_min,
+                  ymax=Y_max,
+                  fill='I.C. de 95%\npara a previsão'),alpha=alpha)+
+  geom_ribbon(aes(x=Y_chap,y=Y_chap,
+                  ymin=Y_min2,
+                  ymax=Y_max2,
+                  fill='I.C. de 95%\npara a média'),alpha=alpha)+
+  geom_line(aes(Y_chap,Y_chap,
+                color='Função identidade'))+
+  geom_point(aes(Y_chap,Y,shape='Dados\nobservados',color=dados_full$species))+
+  scale_color_manual('',values=c('black','#ff5555','#55ff55','#5555ff'),
+                     label=c('Função\nidentidade','Setosa','Vericolor','Virgínica'))+
+  scale_fill_manual('',values=c(interval_color,'lightblue'))+
+  scale_shape('')+
+  scale_y_continuous('Largura da pétala',limits=c(-0.25,2.75))+
+  scale_x_continuous('Largura esperada da pétala',expand=c(0,0))+
+  theme_bw()+labs(title='Modelo 4')
+plot
+
+#Calculando os valores que devem entrar no gráfico com os intervalos de confiança
+#Modelo 3
+#O processo consiste de remover um elemento da amostra,
+#fazer a regressão e armazenar os valores de interesse
+#Há formas mais inteligentes de fazer isso, por exemplo,
+#aproveitando os resíduos PRESS para não ter de refazer a regressão
+#Porém, honestamente, estou com preguiça de pensar muito sobre isso,
+#então vou fazer do jeito simplez ;P
+dados_full=dados_backup
+X_full=as.matrix(cbind(rep(1,100),dados_full[,c(1)]))
+Y_full=c()
+Y_min=c()
+Y_max=c()
+Y_min2=c()
+Y_max2=c()
+for(indice in c(1:100)){
+  dados=dados_full[-indice,]
+  regression=lm(dados$petal_width~dados$petal_length)
+  
+  Y=as.matrix(dados[,2:2])
+  n=length(Y)
+  p=length(regression$coefficients)
+  
+  beta=matrix(regression$coefficients,p,1)
+  
+  X=as.matrix(cbind(rep(1,n),dados[,c(1)]))
+  #X=as.matrix(dados[,c(1,4,5,6)])
+  
+  petal_model=function(x){x%*%beta}
+  
+  sigma2_chap=sum((Y-petal_model(X))**2)/(n-2)
+  
+  calcula_var_em_x0=function(raw_x0){
+     #x0=cbind(rep(1,length(raw_x0)),raw_x0)
+     x0=raw_x0
+     sigma2_chap*(x0%*%solve(t(X)%*%X)%*%t(x0))}
+     
+  Y_full=c(Y_full,petal_model(X_full[indice:indice,]))
+  Y_min=c(Y_min,petal_model(X_full[indice:indice,])+
+            qt(0.025,n-p)*
+            matrix(sqrt(diag(sigma2_chap+
+                               calcula_var_em_x0(matrix(X_full[indice,],1,2)))),1,1))
+  Y_max=c(Y_max,petal_model(X_full[indice:indice,])+
+            qt(0.975,n-p)*
+            matrix(sqrt(diag(sigma2_chap+
+                               calcula_var_em_x0(matrix(X_full[indice,],1,2)))),1,1))
+  Y_min2=c(Y_min2,petal_model(X_full[indice:indice,])+
+             qt(0.025,n-p)*
+             matrix(sqrt(diag(calcula_var_em_x0(matrix(X_full[indice,],1,2)))),1,1))
+  Y_max2=c(Y_max2,petal_model(X_full[indice:indice,])+
+             qt(0.975,n-p)*
+             matrix(sqrt(diag(calcula_var_em_x0(matrix(X_full[indice,],1,2)))),1,1))
+}
+
+Y_chap=Y_full
+X=X_full
+Y=as.matrix(dados_full[,2:2])
+
+interval_color='#7777ff'
+alpha=0.5
+plot=ggplot()+
+  geom_ribbon(aes(x=Y_chap,y=Y_chap,
+                  ymin=Y_min,
+                  ymax=Y_max,
+                  fill='I.C. de 95%\npara a previsão'),alpha=alpha)+
+  geom_ribbon(aes(x=Y_chap,y=Y_chap,
+                  ymin=Y_min2,
+                  ymax=Y_max2,
+                  fill='I.C. de 95%\npara a média'),alpha=alpha)+
+  geom_line(aes(Y_chap,Y_chap,
+                color='Função identidade'))+
+  geom_point(aes(Y_chap,Y,shape='Dados\nobservados',color=dados_full$species))+
+  scale_color_manual('',values=c('black','#ff5555','#55ff55','#5555ff'),
+                     label=c('Função\nidentidade','Setosa','Vericolor','Virgínica'))+
+  scale_fill_manual('',values=c(interval_color,'lightblue'))+
+  scale_shape('')+
+  scale_y_continuous('Largura da pétala',limits=c(-0.5,3))+
+  scale_x_continuous('Largura esperada da pétala',expand=c(0,0))+
+  theme_bw()+labs(title='Modelo 3')
+plot
+```
