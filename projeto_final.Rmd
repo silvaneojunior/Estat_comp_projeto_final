@@ -1,39 +1,66 @@
 ---
-title: "\\begin{center}	\\textbf{UNIVERSIDADE FEDERAL DO RIO DE JANEIRO}\\\\ Departamento de Métodos Estatísticos - IM\\\\ Estatística computacional\\\\\\vspace{250 pt}\\textbf{{\\Large TÍTULO}}\\\\ Projeto final\\\\ \\vspace{160 pt}\\begin{flushright}\\textbf{Aluno:} Silvaneo Vieira dos Santos Junior\\\\ \\textbf{Professor:} Carlos Tadeu Pagani Zanini\\\\ \\end{flushright}\\end{center}"
+title: "\\begin{center}	{\\fontsize{12}{22}\\textbf{UNIVERSIDADE FEDERAL DO RIO DE JANEIRO}\\\\ \\textnormal{Departamento de Métodos Estatísticos - IM}\\\\ \\textnormal{Estatística computacional}\\\\\\vspace{200 pt}\\textbf{{\\Large Modelos Lineares Generalizados: Uma abordagem sequencial via Geometria da Informação}}\\\\ \\textnormal{Projeto final}\\\\ \\vspace{160 pt}\\begin{flushright}\\textbf{Aluno:} \\textnormal{Silvaneo Vieira dos Santos Junior}\\\\ \\textbf{Professor:} \\textnormal{Carlos Tadeu Pagani Zanini}\\\\ \\end{flushright}}\\end{center}"
 author: ""
 output: 
   pdf_document: 
     toc: yes
     number_sections: yes
+    fig_height: 4
 toc-title: "ÍNDICE"
 date: "`r Sys.setlocale('LC_TIME', 'Portuguese'); format(Sys.Date(),'%d de %B de %Y')`"
-bibliography: references.bib 
+bibliography: references.bib
 link-citations: yes
-header-include:
+fontsize: 10pt
+urlcolor: blue
+linkcolor: green
+header-includes:
+  - \usepackage{amsthm}
+  - \usepackage{hyperref}
+  - \usepackage{cleveref}
   - \usepackage{cancel}
   - \usepackage[portuguese]{babel}
-  - \usepackage{natbib}
-  - \bibliographystyle{#1}
-  - \bibliography{#2}
-
+  - \usepackage{float}
+  - \usepackage[font=scriptsize,labelfont=bf]{caption}
 ---
 
+\crefformat{footnote}{#2\footnotemark[#1]#3}
+\newtheorem{theorem}{Teorema}[section]
+    
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE,
+	fig.align='center'
+)
 Sys.setlocale("LC_TIME", "Portuguese")
 
 library(tidyverse)
+library(MASS)
+library(rootSolve)
+library(cubature)
+library(mvtnorm)
+library(latex2exp)
+library(extraDistr)
 ```
 
 \newpage
 
 # Introdução
 
-\pagebreak
+Este trabalho tem como proposta aplicar a metodologia desenvolvida em @AlvesGDLM para o ajuste de Modelos Dinâmicos Lineares Generalizados (GDLM) via Geometria da Informação [@AmariGeomInfo] no caso particular dos"modelos não-dinâmicos", isto é, dos Modelos Lineares Generalizados (GLM). A ideia deste projeto é apresentar uma versão modificado do trabalho original, dando ênfase nas particularidades associadas aos GLMs.
+
+Começaremos o trabalho apresentando a metodologia usada, descrevendo de forma geral a classe dos GLMs e apresentando os resultados relevantes associados à Geometria da Informação.
+
+Em seguida, discutiremos a qualidade do ajuste obtido pela metodologia proposta, apresentando também uma alternativa com menor custo computacional.
+
+Por último, finalizaremos o trabalho apresentando um exemplo com dados simulados, discutindo a qualidade do ajuste como um todo e as consequências de certas simplificações.
+
+Os códigos utilizados para os ajustes (incluindo os que foram omitidos neste documento) e criação deste documento podem ser encontrado \href{https://github.com/silvaneojunior/Estat_comp_projeto_final}{neste repositório}.
 
 # Metodologia
 
-Neste trabalho estaremos interessados em avaliar o ajuste de Modelos Lineares Generalizados (GLM) usando uma variação da metodologia proposta em @AlvesGDLM. Nesta sessão apresentaremos a base da metodologia utilizada, começando por uma breve introdução aos GLM, em seguida apresentaremos uma versão simplificada do Teorema da Projeção [@AmariGeomInfo] e a forma como aplicaremos esse teorema para o problema que desejamos resolver. Finalizamos essa sessão com algumas considerações sobre algumas formas de se calcular as integrais necessárias para a aplicação da metodologia.
+Neste trabalho estaremos interessados em avaliar o ajuste de Modelos Lineares Generalizados (GLM) usando uma variação da metodologia proposta em @AlvesGDLM. Nesta sessão apresentaremos a base da metodologia utilizada, começando por uma breve introdução aos GLM, em seguida apresentaremos uma versão simplificada do Teorema da Projeção [@AmariGeomInfo] e a forma como aplicaremos esse teorema para o problema que desejamos resolver.
 
 ## Modelos Lineares Generalizados
 
@@ -42,50 +69,53 @@ A classe dos Modelos Lineares Generalizados [@McCulloch2001; @dobson2018] é uma
 \begin{equation}
 \label{GLMDef}
 \begin{aligned}
-Y_{i}|\theta &\sim F(\lambda_i),\\
-g(\lambda_i) &= \eta = x'_{i}\theta,
+Y_{i}|\beta &\sim F(\lambda_i),\\
+g(\lambda_i) &= \eta_i = x'_{i}\beta,
 \end{aligned}
 \end{equation}
 
-onde $g$, chamada função de ligação, é uma função contínua e monótona, $\eta$ é o preditor linear, $X$ é a matriz de planejamento, $x_{i}$ é a $i$-ésima coluna de $X$, $\theta$ (possivelmente um vetor) são os parâmetros latentes que representam o efeito das variáveis explicativas e $F$ representa uma distribuição pertencente a família exponencial e indexada pelo parâmetro $\lambda_i$ (possivelmente um vetor). Nesse trabalho sempre vamos considerar que $g$ e $X$ são conhecidos.
+onde $g$, chamada função de ligação, é uma função contínua e monótona, $\eta_i$ é o preditor linear, $X$ é a matriz de planejamento, $x_{i}$ é a $i$-ésima coluna de $X$, $\beta$ (possivelmente um vetor) são os parâmetros latentes que representam o efeito das variáveis explicativas e $F$ representa uma distribuição pertencente à família exponencial e indexada pelo parâmetro $\lambda_i$ (possivelmente um vetor). Nesse trabalho sempre vamos considerar que $g$ e $X$ são conhecidos.
 
-Sendo $F$ pertencente a família exponencial, então temos que, por definição, podemos escrever a densidade de $Y_i|\theta$ como:
+Sendo $F$ pertencente à família exponencial, então temos que, por definição, podemos escrever a densidade de $Y_i|\beta$ como:
 
 \begin{equation}
 \label{ExpFamDef}
 \begin{aligned}
-f(y_{i}|\theta) &= \exp\left\{\lambda_i \cdot H(y_i) - A(\lambda_i) + B(y_{i}) \right\},
+f(y_{i}|\beta) &= \exp\left\{\lambda_i \cdot H(y_i) - A(\lambda_i) + B(y_{i}) \right\},
 \end{aligned}
 \end{equation} onde as funções $H$, $A$ e $B$ são conhecidas. Neste trabalho o vetor $H(y_i)$ será chamado de vetor de estatísticas suficientes.
 
 Adiante apresentamos um importante resultado associado as distribuições pertencentes à família exponencial [@migon2014statistical]:
 
-\textbf{Teorema 1:} \emph{
+\begin{theorem}
+\label{Teom1}
 Seja $Y_i$ com distribuição pertencente à família exponencial conforme (\ref{ExpFamDef}), então vale que:
 \begin{equation}
-\label{Teom1}
+\label{Teom1_eq}
 \begin{aligned}
 \mathbb{E}[H_j(y_i)] &= \frac{\partial A(\lambda_i)}{\partial \lambda_{ij}}.
 \end{aligned}
 \end{equation}
-}
+\end{theorem}
 
-Alguns exemplos de distribuições pertencentes à família exponencial são: Normal com média e variância desconhecidas, Gamma com parâmetro de forma e escala desconhecidos, Beta, Multinomial com parâmetro de tentativas conhecido, Binomial Negativa com número de fracassos conhecido, Poisson, Geométrica, Rayleigh, Pareto com locação conhecida e Pareto Assimétrica com locação conhecida. Neste trabalho estaremos especialmente interessados nos casos Normal com média e variância desconhecidas, Rayleigh e Pareto Assimétrica com locação conhecida.
+Alguns exemplos de distribuições pertencentes à família exponencial são: Normal com média e variância desconhecidas, Gamma com parâmetro de forma e escala desconhecidos, Beta, Multinomial com parâmetro de tentativas conhecido, Binomial Negativa com número de fracassos conhecido, Poisson, Geométrica, Rayleigh, Pareto com locação conhecida e Pareto Assimétrica com locação conhecida. Neste trabalho estaremos especialmente interessados no caso Normal com média e variância desconhecidas.
 
-Abordaremos neste trabalho como realizar a análise Bayesiana para dados provenientes de um modelo observacional conforme especificado em (\ref{GLMDef}). Para isso, vamos especificar uma priori $\pi_0$ para $\theta$ e, para realizar qualquer que seja a análise, devemos encontrar a distribuição a posteriori de $\theta$ ($\pi_n$). Como pode ser visto em @migon2014statistical, podemos escrever $\pi_n$ como:
+Abordaremos neste trabalho como realizar a análise Bayesiana para dados provenientes de um modelo observacional conforme especificado em (\ref{GLMDef}). Para isso, vamos especificar uma priori $\pi_0$ para $\beta$ e, para realizar qualquer que seja a análise, devemos encontrar a distribuição a posteriori de $\beta$ ($\pi_n$). Como pode ser visto em @migon2014statistical, podemos escrever $\pi_n$ como:
 
 \begin{equation}
 \label{Post-def}
 \begin{aligned}
-\pi_n(\theta|y_1,...,y_n) = \frac{\pi_0(\theta) \prod_{i=1}^{n} f(y_i|\theta)}{\int \pi_0(\theta) \prod_{i=1}^{n} f(y_i|\theta) d\theta}.
+\pi_n(\beta|y_1,...,y_n) = \frac{\pi_0(\beta) \prod_{i=1}^{n} f(y_i|\beta)}{\int \pi_0(\beta) \prod_{i=1}^{n} f(y_i|\beta) d\beta}.
 \end{aligned}
 \end{equation}
 
-Infelizmente, a menos do caso onde $F$ representa a distribuição Normal com varância conhecida, não é possível obter uma solução analítica para $\int \pi_0(\theta) \prod_{i=1}^{n} f(y_i|\theta) d\theta$, sendo necessário recorrer a métodos de integração numérica para obter $\pi_n(\theta|y_1,...,y_n)$ ou estimativas de $\theta$. Tendo em mente que métodos de integração numérica podem ter um custo computacional muito elevado, especialmente quando a dimensão de $\theta$ é grande, @AlvesGDLM propõe o uso de aproximações para $\pi_n$ de modo que possamos obter uma forma analítica aproximada para a posteriori de $\theta$. No trabalho original, a metodologia é apresentada para Modelos Dinâmicos Lineares Generalizados, porém os GLM são um caso particular desta classe, de modo que a metodologia proposta também é válida para os modelos em que estamos interessados neste trabalho, contudo, usaremos uma versão modificada desta metodologia, de modo que não discutiremos o trabalho original de @AlvesGDLM, mas apresentaremos diretamente a versão modificada (que é mais simples).
+Infelizmente, a menos do caso onde $F$ representa a distribuição Normal com variância conhecida, não é possível obter uma solução analítica para $\int \pi_0(\beta) \prod_{i=1}^{n} f(y_i|\beta) d\beta$, sendo necessário recorrer a métodos de integração numérica para obter $\pi_n(\beta|y_1,...,y_n)$ ou estimativas de $\beta$.
+
+Tendo em mente que métodos de integração numérica podem ter um custo computacional muito elevado, especialmente quando a dimensão de $\beta$ é grande, @AlvesGDLM propõe o uso de aproximações para $\pi_n$ de modo que possamos obter uma forma analítica aproximada para a posteriori de $\beta$. No trabalho original, a metodologia é apresentada para Modelos Dinâmicos Lineares Generalizados, porém os GLM são um caso particular desta classe de modelos, de modo que a metodologia proposta também é válida para os modelos em que estamos interessados. Dito isso, usaremos na verdade uma versão modificada desta metodologia, de modo que não discutiremos o trabalho original de @AlvesGDLM, mas apresentaremos diretamente a versão modificada (que é mais simples).
 
 ## Inferência aproximada via Teorema da Projeção
 
-Como visto na sessão anterior, para realizar o processo de inferência, precisamos obter $\pi_n(\theta|y_1,...,y_n) = \frac{\pi_0(\theta) \prod_{i=1}^{n} f(y_i|\theta)}{\int \pi_0(\theta) \prod_{i=1}^{n} f(y_i|\theta) d\theta}$, sendo que nem sempre podemos obter uma forma analítica fechada para $\pi_n$. Seguindo a abordagem proposta em @AlvesGDLM, para solucionar este problema, iremos aproximar $\pi_n$ por uma $\widehat{\pi}_n$ que seja próxima da posteriori verdadeira, mas que tenha propriedades úteis, por exemplo, tal que $\int \pi_0(\theta) \prod_{i=1}^{n} f(y_i|\theta) d\theta$ seja tratável. Para a escolha de $\widehat{\pi}_n$, vamos escolher, dentro de uma família de distribuições, aquela que minimiza a divergência de Kullback-Leibler (KL), definida como:
+Como visto anteriormente, para realizar o processo de inferência, precisamos obter $\pi_n(\beta|y_1,...,y_n) = \pi_0(\beta) \prod_{i=1}^{n} f(y_i|\beta)\left(\int \pi_0(\beta) \prod_{i=1}^{n} f(y_i|\beta) d\beta\right)^{-1}$, sendo que nem sempre podemos obter uma forma analítica fechada para $\pi_n$. Seguindo a abordagem proposta em @AlvesGDLM, para solucionar este problema, iremos aproximar $\pi_n$ por uma $\widehat{\pi}_n$ que seja próxima da posteriori verdadeira, mas que tenha propriedades úteis, por exemplo, tal que $\int \pi_0(\beta) \prod_{i=1}^{n} f(y_i|\beta) d\beta$ seja tratável. Para a escolha de $\widehat{\pi}_n$, vamos escolher, dentro de uma família de distribuições, aquela que minimiza a divergência de Kullback-Leibler (KL), definida como:
 
 \begin{equation}
 \label{KL-def}
@@ -93,68 +123,59 @@ KL(p||q) = \mathbb{E}_p[\ln(f_q(X))-\ln(f_p(X))],
 \end{equation}
 onde $p$ e $q$ são distribuições de probabilidade, $f_p$ e $f_q$ são funções de densidade ou de massa de probabilidade associadas, respectivamente, a $p$ e $q$ e $\mathbb{E}_p$ representa o valor esperado calculado considerando que $X$ tem distribuição $p$.
 
-Para os fins deste trabalho, é natural escolher $\widehat{\pi}_n$ tal que $KL(\pi_n,\widehat{\pi}_n)$ é minimal (ver capítulo 5 de @infoTeoMacKay para uma interpretação intuitiva da divergência KL). Por conveniência, vamos escolher $\widehat{\pi}_n$ como pertencente à família Normal, de modo que, dado $\pi_n$, basta encontrar os parâmetros de média e variância para $\widehat{\pi}_n$ tais que $KL(\pi_n,\widehat{\pi}_n)$ é otimal. Para auxiliar no processo de encontrar os parâmetros ótimos de $\widehat{\pi}_n$, podemos usar o seguinte teorema (ver @AmariGeomInfo):
+Para os fins deste trabalho, é natural escolher $\widehat{\pi}_n$ tal que $KL(\pi_n,\widehat{\pi}_n)$ é minimal (ver capítulo 5 de @infoTeoMacKay para uma interpretação intuitiva da divergência KL e que explica o porque a escolha feita é ``natural"). Por conveniência, vamos escolher $\widehat{\pi}_n$ como pertencente à família Normal, de modo que, dado $\pi_n$, basta encontrar os parâmetros de média e variância para $\widehat{\pi}_n$ tais que $KL(\pi_n,\widehat{\pi}_n)$ é otimal. Para auxiliar no processo de encontrar os parâmetros ótimos de $\widehat{\pi}_n$, podemos usar o seguinte teorema (ver @AmariGeomInfo):
 
-\textbf{Teorema 2 (da Projeção):} \emph{
-Seja $p$ e $q$ duas distribuições de variáveis aleatórias contínuas \footnote{O Teorema ainda vale sem essa restrição} pertencentes à família exponencial, conforme (\ref{ExpFamDef}), isto é, existem densidades de probabilidade $f_p$ e $f_q$ associadas, respectivamente, a $p$ e $q$ tais que:
-
+\begin{theorem}[da Projeção]
+\label{teom_proj}
+Sejam $p$ e $q$ duas distribuições de variáveis aleatórias contínuas \footnote{O Teorema ainda vale sem essa restrição.} pertencentes à família exponencial conforme (\ref{ExpFamDef}), isto é, existem densidades de probabilidade $f_p$ e $f_q$ associadas, respectivamente, a $p$ e $q$ tais que:
 \begin{equation}
 \label{formTeo2}
-f_p(x)=\exp\left\{\lambda_p \cdot H_p(x) - A_p(\lambda_p) + B_p(x) \right\}\\
-f_q(x)=\exp\left\{\lambda_q \cdot H_q(x) - A_q(\lambda_q) + B_q(x) \right\}.
+\begin{aligned}
+f_p(x)&=\exp\left\{\lambda_p \cdot H_p(x) - A_p(\lambda_p) + B_p(x) \right\},\\
+f_q(x)&=\exp\left\{\lambda_q \cdot H_q(x) - A_q(\lambda_q) + B_q(x) \right\}.
+\end{aligned}
 \end{equation}
-
 Então, fixados os parâmetros $\lambda_p$ associados à distribuição $p$, os parâmetros $\lambda_q$ da distribuição $q$ que minimizam a divergência KL são únicos (quando existem) e satisfazem o seguinte sistema:
-
 \begin{equation}
 \label{Teom2}
 \mathbb{E}_p[H_q]=\mathbb{E}_q[H_q].
 \end{equation}
-
 Vale ainda que, se existe $\lambda_q$ que satisfaz o sistema acima, então existe um mínimo para a divergência KL com relação a $\lambda_q$ e a solução para o sistema \ref{Teom2} é única.
-}
+\end{theorem}
 
-Apresentaremos a prova parcial do Teorema 2, pois a enunciação do Teorema da Projeção apresentada em @AmariGeomInfo é muito mais geral do que o teorema que usaremos. Vamos nos limitar a provar que os parâmetros $\lambda_q$ que minimizam a divergência KL satisfazem \ref{Teom2}, sendo que os argumentos para a existência e unicidade do mínimo e da unicidade da solução do sistema podem ser encontrardo em @AmariGeomInfo.
+Apresentaremos a prova parcial do Teorema 2, pois a enunciação do Teorema da Projeção apresentada em @AmariGeomInfo é muito mais geral do que o teorema que usaremos. Vamos nos limitar a provar que os parâmetros $\lambda_q$ que minimizam a divergência KL satisfazem (\ref{Teom2}), sendo que os argumentos para a existência e unicidade do mínimo e da unicidade da solução do sistema podem ser encontrado em @AmariGeomInfo.
 
-Para provar o Teorema 2, primeiro observe que a divergência KL de $p$ com relação a $q$ pode ser escrita como:
-
+\begin{proof}
+Para provar o teorema \ref{teom_proj}, primeiro observe que a divergência KL de $p$ com relação a $q$ pode ser escrita como:
 \begin{equation}
-\label{formTeo2}
+\label{formTeo2_proof}
 \begin{aligned}
-KL(p||q)&=\mathbb{E}_p[\lambda_q \cdot H_q(X) - A_q(\lambda_q) + B_q(X)  - (\lambda_p \cdot H_p(X) - A_p(\lambda_p) + B_p(X))])\\
-&=\lambda_q \cdot \mathbb{E}_p[H_q(X)] - A_q(\lambda_q) + \mathbb{E}_p[B_q(X)]  - \lambda_p \cdot \mathbb{E}_p[H_p(x)] + A_p(\lambda_p) - \mathbb{E}_p[B_p(X))].
+KL(p||q)&=\mathbb{E}_p[\lambda_q \cdot H_q(X) - A_q(\lambda_q) + B_q(X)  - \lambda_p \cdot H_p(X) + A_p(\lambda_p) - B_p(X)]\\
+&=\lambda_q \cdot \mathbb{E}_p[H_q(X)] - A_q(\lambda_q) + \mathbb{E}_p[B_q(X)]  - \lambda_p \cdot \mathbb{E}_p[H_p(X)] + A_p(\lambda_p) - \mathbb{E}_p[B_p(X))].
 \end{aligned}
 \end{equation}
-
 Veja que, se $\lambda_q$ minimiza $KL(p||q)$, usando propriedades da divergência KL na família exponencial (i.e., que ela é contínua e duas vezes diferenciável em relação à $\lambda_q$), temos que:
-
 \begin{equation}
 \label{sistem1Teo2}
 \frac{\partial}{\partial \lambda_{qi}}KL(p||q)=0, \forall i.
 \end{equation}
-
 Mas veja que:
-
 \begin{equation}
 \label{derivTeo2}
-\frac{\partial}{\partial \lambda_{qi}}KL(p||q)=\mathbb{E}_p[H_{qi}(X)] - \frac{\partial}{\partial lambda_{qi}}A_q(\lambda_q),
+\frac{\partial}{\partial \lambda_{qi}}KL(p||q)=\mathbb{E}_p[H_{qi}(X)] - \frac{\partial}{\partial \lambda_{qi}}A_q(\lambda_q),
 \end{equation}
 pois os valores esperados com relação a $p$ não dependem de $\lambda_q$.
-
 Daí obtemos que, se $\lambda_q$ minimiza $KL(p||q)$, então:
-
 \begin{equation}
-\label{sistem1Teo2}
+\label{sistem1Teo2_2}
 \mathbb{E}_p[H_{qi}(X)] = \frac{\partial}{\partial \lambda_{qi}}A_q(\lambda_q), \forall i.
 \end{equation}
-
-Usando a equação (\ref{Teom1}) do Teorema 1 e lembrando que a equação acima deve valer para todas as coordenadas de $\lambda_q$, obtemos que:
-
+Usando a equação (\ref{Teom1_eq}) do teorema \ref{Teom1} e lembrando que a equação acima deve valer para todas as coordenadas de $\lambda_q$, obtemos que:
 $$
 \mathbb{E}_p[H_{q}(X)] = \mathbb{E}_q[H_{q}(X)].
 $$
-
-E isso conclui a prova parcial do Teorema 2. $\square$
+E isso conclui a prova parcial do teorema \ref{teom_proj}. $\square$
+\end{proof}
 
 No caso específico em que estamos trabalhando, vamos tomar $q$ como pertencente à família Normal (em alguns casos, multivariada), de modo que:
 
@@ -165,29 +186,29 @@ H_{q}(X)=(X,XX')'.
 
 Na prática, isso significa que a $q$ que melhor aproxima $p$ é aquela que tem o mesmo vetor de médias e a mesma matriz de covariância.
 
-A princípio, a metodologia descrita até o momento parece bastante simples: Basta aproximar $\pi_n$ por $\widehat{\pi}_n$ e realizar toda a inferência com base nesta última distribuição que, pertencendo à família Normal, é bem fácil de se trabalhar. Porém, talvez o leitor tenha observado que há uma certa incosistência na metodologia: Não podemos calcular $\pi_n$ ,pois não temos forma analítica fechada para $\int \pi_0(\theta) \prod_{i=1}^{n} f(y_i|\theta) d\theta$, então iremos aproximar a posteriori verdadeira por $\widehat{\pi}_n$, sendo que, para isto, devemos calcular 
-$\mathbb{E}_p[H_{q}(X)]$. Ora, se não conseguimos calcular $\int \pi_0(\theta) \prod_{i=1}^{n} f(y_i|\theta) d\theta$, não é razoável assumir que conseguimos calcular $\mathbb{E}_p[H_{q}(X)]$! De certa forma, estaríamos trocando um problema por outro de igual complexidade (se não maior!).
+A princípio, a metodologia descrita até o momento parece bastante simples: Basta aproximar $\pi_n$ por $\widehat{\pi}_n$ e realizar toda a inferência com base nesta última distribuição que, pertencendo à família Normal, é bem fácil de se trabalhar. Porém, talvez o leitor tenha observado que há uma certa inconsistência na metodologia: Não podemos calcular $\pi_n$ ,pois não temos forma analítica fechada para $\int \pi_0(\beta) \prod_{i=1}^{n} f(y_i|\beta) d\beta$, então iremos aproximar a posteriori verdadeira por $\widehat{\pi}_n$, sendo que, para isto, devemos calcular 
+$\mathbb{E}_p[H_{q}(X)]$. Ora, se não conseguimos calcular $\int \pi_0(\beta) \prod_{i=1}^{n} f(y_i|\beta) d\beta$, não é razoável assumir que conseguimos calcular $\mathbb{E}_p[H_{q}(X)]$! De certa forma, estaríamos trocando um problema por outro de igual complexidade (se não maior!).
 
-Felizmente, trabalhar com $\mathbb{E}_p[H_{q}(X)]$ não é tão problemático quanto trabalhar diretamente com $\pi_n$, pois precisamos apenas do valor de $\mathbb{E}_p[H_{q}(X)]$, e não de uma expressão analítica para ele, Desta forma, podemos calcular $\mathbb{E}_p[H_{q}(X)]$ usando métodos de integração numérica, especificamente, vamos trabalhar com 4 métodos para calcular os valores esperados desejados: Quadratura Gaussiana, Aproximação de Laplace, Monte Carlo e pelo método proposto em @TierneyKadane1 e refinado em TierneyKadane2. Usaremos Quadratura Gaussiana nos Casos Normal com variância desconhecida e Rayleight, pois nestes casos temos de lidar com integrais univariadas, de modo que o custo computacional de se usar Quadratura Gaussiana é despresível. Para o caso Laplace Assimétrica, usaremos os outros métodos afim de conseguir um ajuste satisfatório.
-
-\pagebreak
+Felizmente, trabalhar com $\mathbb{E}_p[H_{q}(X)]$ não é tão problemático quanto trabalhar diretamente com $\pi_n$, pois precisamos apenas do valor de $\mathbb{E}_p[H_{q}(X)]$, e não de uma expressão analítica para ele, desta forma, podemos calcular $\mathbb{E}_p[H_{q}(X)]$ usando métodos de integração numérica, especificamente, vamos trabalhar com 3 métodos para calcular os valores esperados desejados: Quadratura Gaussiana, Monte Carlo e pelo método proposto em @TierneyKadane1 e refinado em @TierneyKadane2. Usaremos Quadratura Gaussiana nos Casos Normal com variância desconhecida e Rayleigh \footnote{\label{note_ext}Esse caso foi omitido do trabalho final para não ultrapassar o limite de páginas.}, pois nestes casos temos de lidar com integrais univariadas, de modo que o custo computacional de se usar Quadratura Gaussiana é desprezível. Para o caso Laplace Assimétrica \cref{note_ext}, usaremos os outros métodos afim de conseguir um ajuste satisfatório.
 
 # Qualidade da aproximação
 
-Como visto na sessão anterior, o Teorema 2 no fornece uma forma simples de aproximar uma distribuição de probabilidade por outra, desde que ambas pertençam à família exponencial, especificamente, esse teorema nos diz qual é **a melhor** distribuição que aproxima nossa posteriori. Naturalmente, **a melhor** distribuição pode não ser boa, por isso, é necessário alguma investigação sobre o assunto. Felizmente, graças as propriedades da família exponencial (ver @AmariGeomInfo e, para o caso mais geral, @TierneyKadane1 e @migon2014statistical), temos que a aproximação será muito boa desde que o tamanho da amostra seja suficientemente grande.
+Como visto na sessão anterior, o teorema \ref{teom_proj} fornece uma forma simples de aproximar uma distribuição de probabilidade por outra, desde que ambas pertençam à família exponencial, especificamente, esse teorema nos diz qual é a **melhor** distribuição que aproxima nossa posteriori. Naturalmente, a **melhor** distribuição pode não ser boa, por isso, é necessário alguma investigação sobre o assunto. Felizmente, graças as propriedades da família exponencial (ver @AmariGeomInfo e, para o caso mais geral, @TierneyKadane1 e @migon2014statistical), temos que a aproximação será muito boa desde que o tamanho da amostra seja suficientemente grande.
 
 Para exemplificar o comportamento descrito acima, vamos exibir adiante uma comparação entre as posterioris aproximadas para vários tamanhos de amostra. Neste caso vamos supor um modelo muito simples:
 
 \begin{equation}
+\begin{aligned}
 \label{Model1}
-Y_i|\theta \sim Poisson(\lambda)\\,
-\ln(\lambda)= \theta\\,
-\theta \sim \mathcal{N}(0,100)\\,
+Y_i|\beta &\sim Poisson(\lambda),\\
+\ln(\lambda)&= \beta,\\
+\beta &\sim \mathcal{N}(0,100),
+\end{aligned}
 \end{equation}
 onde tomaremos $\lambda=1$ para gerar os dados.
 
 
-```{r}
+```{r fig.height=3, fig.width=6}
 set.seed(13031998)
 
 data_plot=data.frame()
@@ -212,16 +233,19 @@ data_plot$n=factor(paste0('Tamanho da amostra:',data_plot$n),levels=paste0('Tama
 ggplot(data_plot)+
   geom_line(aes(x=x,y=fx,linetype='Dist. exata'))+
   geom_line(aes(x=x,y=gx,linetype='Dist. aprox'))+
+  scale_x_continuous(TeX('$\\beta$'))+
+  scale_y_continuous(TeX('Posteriori de $\\beta$'))+
   scale_linetype_manual('',values=c('dashed','solid'))+
   theme_bw()+
-  facet_wrap(.~n,scales = 'free')
+  facet_wrap(.~n,scales = 'free')+
+  theme(legend.position="right")
 
 
 ```
 
-Veja que temos uma aproximação com qualidade muito boa, mesmo para amostras relativamente pequenas. Vale observar que, no caso da distribuição Poisson, a qualidade da aproximação dependende da magnitude dos dados observados. De modo geral, a qualidade vai depender da quantidade de informação na amostra, sendo que é fácil ver (via, por exemplo, a informação de Fisher) observações de valores maiores tem muito mais informação do que obserções de valores menores (especialmente o $0$). O caso que mostramos anteriormente seria uma caso **ruim**, pois a taxa verdadeira da Poisson (isto é, a taxa usada para gerar os dados) foi igual a 1. Adiante, vamos mostrar o mesmo exemplo, mas agora gerando dados de uma Poisson com taxa 5 (que ainda é um valor relativamente baixo):
+Veja que temos uma aproximação com qualidade muito boa, mesmo para amostras relativamente pequenas. Vale observar que, no caso da distribuição Poisson, a qualidade da aproximação dependente da magnitude dos dados observados. De modo geral, a qualidade vai depender da quantidade de informação na amostra, sendo que é fácil ver que (especificamente no caso Poisson) observações de valores maiores tem muito mais informação do que observações de valores menores (especialmente o $0$). O caso que mostramos anteriormente seria um "caso ruim", pois a taxa verdadeira da Poisson (isto é, a taxa usada para gerar os dados) foi igual a 1. Adiante, vamos mostrar o mesmo exemplo, mas agora gerando dados de uma Poisson com taxa 5 (que ainda é um valor relativamente baixo):
 
-```{r}
+```{r fig.height=3, fig.width=6}
 set.seed(13031998)
 
 data_plot=data.frame()
@@ -248,50 +272,55 @@ ggplot(data_plot)+
   geom_line(aes(x=x,y=gx,linetype='Dist. aprox.'))+
   scale_linetype_manual('',values=c('dashed','solid'))+
   theme_bw()+
-  facet_wrap(.~n,scales = 'free')
+  facet_wrap(.~n,scales = 'free')+
+  theme(legend.position="right")
 
 
 ```
 
 Observe que, agora, a aproximação é razoável mesmo para uma amostra com apenas 1 elemento, sendo que ela é praticamente idêntica à distribuição exata para amostras de tamanho maior que 10.
 
-O modelo descrito em (\ref{Model1}) é útil para exemplificar propriedades gerais da aproximação, porém ele não representa bem o tipo de modelo que gostaríamos de ajustar em problemas reais, uma vez que, nesta especificação, as observações $y_i$ são i.i.d.. De modo geral, estaremos interessados em um modelo da forma descrita em (\ref{GLMDef}), onde teremos um conjunto de covariáveis das quais queremos estimar o efeito. No exemplo apresentado tivemos de lidar apenas com uma variável, de modo que as integrais a serem calculadas eram univariadas, o que permitiu o uso de quadratura Gaussiana com um custo computacional desprezível. Ao lidar com um conjunto de variáveis as integrais com as devemos trabalhar passam a ser multivariadas, o que torna o uso de métodos de integração determinísticos inviável (para um conjunto grande de parâmetros no modelo).
+O modelo descrito em (\ref{Model1}) é útil para exemplificar propriedades gerais da aproximação, porém ele não representa bem o tipo de modelo que gostaríamos de ajustar em problemas reais, uma vez que, nesta especificação, as observações $y_i$ são i.i.d.. De modo geral, estaremos interessados em um modelo da forma descrita em (\ref{GLMDef}), onde teremos um conjunto de covariáveis das quais queremos estimar o efeito. No exemplo apresentado tivemos de lidar apenas com uma variável, de modo que as integrais a serem calculadas eram univariadas, o que permitiu o uso de quadratura Gaussiana com um custo computacional desprezível. Ao lidar com um modelo onde $\beta$ é um vetor, as integrais com as quais devemos trabalhar passam a ser multivariadas, o que torna o uso de métodos de integração determinísticos inviável (para um modelo com muitos parâmetros).
 
-Felizmente, há uma solução para o problema mencionado acima. Primeiro, para apresentar essa proposta, suponha que há apenas uma observação, de modo que nossa posteriori é propocional à $f(y_1|\theta)\pi_0(\theta)$. Veja que, no nosso modelo, $\theta$ depende de $y_1$ apenas através do preditor linear $\eta_1$, que por sua vez é univariado. Apartir da priori Normal de $\theta$, temos uma priori Normal para $\eta_1$ e podemos obter a posteriori aproximada para $\eta_1$ usando a metodologia descrita anteriormente (como $\eta_1$ é sempre univariado, temos que as integrais podem ser resolvidas facilmente com métodos numéricos determinísticos). Uma vez obtida a posteriori Normal para $\eta_1$, é fácil obter a posteriori para $\theta$ (mesma fórmula usada em Modelos Dinâmicos Lineares, ver @PetrisDLM, @WestHarrDLM ou @Kalman_filter_origins):
+Felizmente, há uma solução para o problema mencionado acima. Primeiro, para apresentar essa proposta, suponha que há apenas uma observação, de modo que nossa posteriori é propocional à $f(y_1|\beta)\pi_0(\beta)$. Veja que, no nosso modelo, $\beta$ depende de $y_1$ apenas através do preditor linear $\eta_1$, que por sua vez é univariado. A partir da priori Normal de $\beta$, temos uma priori Normal para $\eta_1$ e podemos obter a posteriori aproximada para $\eta_1$ usando a metodologia descrita anteriormente (como $\eta_1$ é sempre univariado, temos que as integrais podem ser resolvidas facilmente com métodos numéricos determinísticos). Uma vez obtida a posteriori Normal para $\eta_1$, é fácil obter a posteriori para $\beta$ (mesma fórmula usada em Modelos Dinâmicos Lineares, ver @PetrisDLM, @WestHarrDLM ou @Kalman_filter_origins):
 
 \begin{equation}
 \label{post_theta}
 \begin{aligned}
-\eta_1|y_1 \sim \mathcal{N}(\mu,\sigma^2) \quad \theta\sim \mathcal{N}(\vec{m}_0,V_0) \rightarrow \theta|y_1 &\sim \mathcal{N}(\vec{m}_1,V_1),\\
-\vec{m}_1 &= \vec{m}_0 + V_0x_1(x_1'V_0x_1)^{-1}(\mu-x_1'\vec{m}_0),\\
-V_1 &= V_0 + V_0x_1(x_1'V_0x_1)^{-1}(\sigma^2-x_1'V_0x_1)(x_1'V_0x_1)^{-1}x_1'V_0.
+&\eta_1|y_1 \sim \mathcal{N}(\mu,\sigma^2) \quad \beta\sim \mathcal{N}(\vec{m}_0,V_0) \rightarrow \beta|y_1 \sim \mathcal{N}(\vec{m}_1,V_1),\\
+&\vec{m}_1 = \vec{m}_0 + V_0x_1(x_1'V_0x_1)^{-1}(\mu-x_1'\vec{m}_0),\\
+&V_1 = V_0 + V_0x_1(x_1'V_0x_1)^{-1}(\sigma^2-x_1'V_0x_1)(x_1'V_0x_1)^{-1}x_1'V_0.
 \end{aligned}
 \end{equation}
 
-Com as equações acima podemos atualizar a distribuição de $\theta$ de forma computacionalmente eficiente, independente da dimensão de $\theta$. Infelizmente, isso só resolve o nosso problema para amostras de tamanho unitário, de fato, para uma amostra de tamanho $n$ qualquer, devemos obter a posteriori conjunta dos $n$ preditores lineares para podermos usar a fórmula (\ref{post_theta}), para isso deveríamos resolver algumas integrais $n$ variadas, ou seja, o problema inicial ainda persiste. Resta então apresentar um último resultado teórico que finalmente vai nos permitir fugir da "maldição da dimensionalidade". Veja que, em geral, vale que:
+Com as equações acima podemos atualizar a distribuição de $\beta$ de forma computacionalmente eficiente, independente da dimensão de $\beta$. Infelizmente, isso só resolve o nosso problema para amostras de tamanho unitário, de fato, para uma amostra de tamanho $n$ qualquer, devemos obter a posteriori conjunta dos $n$ preditores lineares para podermos usar a fórmula (\ref{post_theta}), para isso deveríamos resolver algumas integrais $n$ variadas, ou seja, o problema inicial ainda persiste.
+
+Resta então apresentar um último resultado teórico que finalmente vai nos permitir fugir da "maldição da dimensionalidade". Veja que, em geral, vale que:
 
 \begin{equation}
 \label{prop_decomp}
 \begin{aligned}
-f(\theta|y_1,...,y_n) \propto f(y_n|\theta, y_1,...,y_{n-1})f(y_{n-1}|\theta, y_1,...,y_{n-2}) \cdots f(y_2|\theta, y_1)f(y_1|\theta)f(\theta).
+f(\beta|y_1,...,y_n) \propto f(y_n|\beta, y_1,...,y_{n-1})f(y_{n-1}|\beta, y_1,...,y_{n-2}) \cdots f(y_2|\beta, y_1)f(y_1|\beta)f(\beta).
 \end{aligned}
 \end{equation}
 
-Usando que, por hipótese, os $y_i$'s são independentes dado $\theta$, podemos simplificar a equação acima da seguinte forma:
+Usando que, por hipótese, os $y_i$'s são independentes dado $\beta$, podemos simplificar a equação acima da seguinte forma:
 
 \begin{equation}
 \label{prop_decomp2}
 \begin{aligned}
-f(\theta|y_1,...,y_n) &\propto f(y_n|\theta)f(y_{n-1}|\theta) \cdots f(y_2|\theta)f(y_1|\theta)f(\theta),\\
-=f(\theta)\prod_{i=1}^{n}f(y_i|\theta).
+f(\beta|y_1,...,y_n) &\propto f(y_n|\beta)f(y_{n-1}|\beta) \cdots f(y_2|\beta)f(y_1|\beta)f(\beta),\\
+&=f(\beta)\prod_{i=1}^{n}f(y_i|\beta).
 \end{aligned}
 \end{equation}
 
-Observe que $f(y_1|\theta)f(\theta) \propto f(\theta|y_1)$, de modo que podemos obter uma forma aproximada para $f(y_1|\theta)f(\theta)$ usando a metodologida proposta. Com isto, podemos escrever $f(y_2|\theta)f(y_1|\theta)f(\theta) \propto f(y_2|\theta, y_1)f(\theta|y_1)$ e, interpretando $f(\theta|y_1)$ como uma nova priori para $\theta$, podemos usar a metodologia proposta para obter uma forma aproximada para $f(\theta|y_1,y_2)$. Repetindo esse processo elemente a elemento da amostra podemos obter uma forma aproximaa para $f(\theta|y_1,...,y_n)$ usando apenas integrais univariadas. Para efeito de comparação, digamos que, ao usar Quadratura Gaussiana para resolver uma integral, devemos avaliar a função $f(y_1|\theta)f(\theta)$ $k$ vezes para cada dimensão, de modo que, se fóssemos calcular as integrais diretamente, deveríamos avaliar a função $k^n$ (teríamos uma malha $n$ dimensional e repartiríamos cada dimensão em $k$ segmentos), no caso da integração pelos preditores lineares, ou $k^r$, no caso da integração diretamente nos parâmetros latentes $\theta$, em contrapartida, usando a aproximação elemento a elemento da amostra, devemos avaliar a função $f(y_1|\theta)f(\theta)$ apenas $k \times n$ vezes!
+Observe que $f(y_1|\beta)f(\beta) \propto f(\beta|y_1)$, de modo que podemos obter uma forma aproximada para $f(y_1|\beta)f(\beta)$ usando a metodologia proposta. Com isto, podemos escrever $f(y_2|\beta)f(y_1|\beta)f(\beta) \propto f(y_2|\beta, y_1)f(\beta|y_1)$ e, interpretando $f(\beta|y_1)$ como uma nova priori para $\beta$, podemos usar a metodologia proposta para obter uma forma aproximada para $f(\beta|y_1,y_2)$. Repetindo esse processo sequencialmente na amostra podemos obter uma forma aproximada para $f(\beta|y_1,...,y_n)$ usando apenas integrais univariadas. Para exemplificar que esta abordagem tem um custo computacional menor do que a original, digamos que, ao usar Quadratura Gaussiana para resolver uma integral, devemos avaliar a função $f(y|\beta)$ $k$ vezes para cada dimensão, de modo que, se fôssemos calcular as integrais diretamente, deveríamos avaliar a função $k^n$ (teríamos uma malha $n$ dimensional e repartiríamos cada dimensão em $k$ segmentos) no caso da integração pelos preditores lineares, ou $k^r$ no caso da integração diretamente nos parâmetros latentes $\beta$. Em contrapartida, usando a aproximação sequencial da amostra, devemos avaliar a função $f(y_1|\beta)$ apenas $k \times n$ vezes!
 
-Claramente essa proposta reduz dráticamente a quantidade de vezes que devemos computar a função $f(y_1|\theta)f(\theta)$, porém há um preço a se pegar por essa simplificação: Ao usar a distribuição aproximada diversas vezes, há um acumulo do erro de aproximação. Sendo assim, devemos avaliar se, usando esse método simplificado, não estamos tendo perdas significativas na qualidade da aproximação.
+Claramente essa proposta reduz drasticamente a quantidade de vezes que devemos computar a função $f(y|\beta)$, porém há um preço a se pagar por essa simplificação: Ao usar a distribuição aproximada diversas vezes, há um acumulo do erro de aproximação. Sendo assim, devemos avaliar se, usando esse método simplificado, não estamos tendo perdas significativas na qualidade da aproximação.
 
-```{r}
+Adiante apresentamos uma comparação entre as posterioris aproximadas pelo método original e alternativo para os dados do exemplo Poisson com taxa $5$:
+
+```{r fig.height=3, fig.width=6}
 set.seed(13031998)
 
 data_plot=data.frame()
@@ -317,7 +346,6 @@ for(i in 1:n){
   
   x_mean2=x_mean_prev
   s22=s2_prev
-  print(s22)
 }
 
 f=function(x){exp(y_stat*x-n*exp(x)-(x**2)/(2*100))}
@@ -336,31 +364,444 @@ ggplot(data_plot)+
   geom_line(aes(x=x,y=fx,linetype='Dist. exata'))+
   geom_line(aes(x=x,y=gx,linetype='Dist. aprox.',color='Ori.'))+
   geom_line(aes(x=x,y=hx,linetype='Dist. aprox.',color='Alt.'))+
+  scale_x_continuous(TeX('$\\beta$'))+
+  scale_y_continuous(TeX('Posteriori de $\\beta$'))+
   scale_linetype_manual('',values=c('dashed','solid'))+
   scale_color_manual('',values=c('red','blue'))+
   theme_bw()+
-  facet_wrap(.~n,scales = 'free')
+  facet_wrap(.~n,scales = 'free')+
+  theme(legend.position="right")
 
 
 ```
 
-Veja que o método alternativo introduz, de fato, um erro adicional significativo, mas que é, contudo, tolerável, uma vez que a redução do custo computacional é muito grande e, como veremos na próxima sessão, em termos práticos, a diferença entre a posteriori exata e a posteriori aproximada pelo método alternativo é desprezível.
-
-\pagebreak
+Veja que o método alternativo introduz, de fato, um erro adicional significativo, mas que é, contudo, tolerável, uma vez que a redução do custo computacional é muito grande e, como veremos na próxima sessão, em termos práticos, a diferença entre a posteriori exata e a posteriori aproximada pelo método alternativo é desprezível (pelo menos em alguns casos).
 
 # Aplicações
 
-Nesta sessão apresentaremos três aplicações do método proposto 
+Nesta sessão apresentaremos uma das aplicação do método proposto em dados simulados. No exemplo escolhido faremos comparações entre a posteriori obtida pela abordagem descrita na sessão anterior (doravante chamado de método KL) e a posteriori obtida usando métodos de Monte Carlo via Cadeias de Markov (MCMC). Para o obtenção da posteriori por MCMC usaremos o algorítmos de Gibbs [@gamerman2006markov], sendo que para amostrar das marginais completas de cada parâmetro usaremos Metropolis-Hastings com propostas independentes [@gamerman2006markov], especificamente, podemos usar a abordagem KL para obter aproximações para as marginais completas e então usar a distribuição aproximada como proposta, desta forma a cadeia gerada deve convergir rapidamente e ser pouco auto correlacionada (supondo, claro, que a aproximação seja boa). Uma vantagem dessa abordagem para a criação da cadeia é que a aproximação KL só precisa ser feita uma vez (podemos aproveitar o ajuste que já foi feito com a metodologia KL), uma vez que, se $\vec{\beta}\sim \mathcal{N}(\vec{\mu},\Sigma)$, então:
+
+\begin{equation}
+\label{norm_prop_MCMC}
+\begin{aligned}
+\vec{\beta}_1|\vec{\beta_2} \sim \mathcal{N}(\vec{\mu}_1+\Sigma_{12}\Sigma_{22}^{-1}(\vec{\beta_2}-\mu_2),\Sigma_{11}-\Sigma_{12}\Sigma_{22}^{-1}\Sigma_{21}),
+\end{aligned}
+\end{equation}
+onde $\vec{\beta}_1$ e $\vec{\beta_2}$ formam uma partição de $\vec{\beta}$ tal que:
+
+$$
+\begin{bmatrix}\vec{\beta}_1\\ \vec{\beta}_2\end{bmatrix} \sim \mathcal{N}\left(\begin{bmatrix}\vec{\mu}_1\\ \vec{\mu}_2\end{bmatrix},\begin{bmatrix}\Sigma_{11} & \Sigma_{12}\\ \Sigma_{21} & \Sigma_{22}\end{bmatrix}\right).
+$$
+
+Inicialmente, o intuito era apresentar $3$ exemplos nesta sessão, porém, devido à restrição sob o tamanho do documento, as demais aplicações (com dados com distribuição Rayleigh e Laplace Assimétrica) serão omitidas, uma vez que o resultado obtido no caso Normal com variância desconhecida representa bem a qualidade do ajuste nos demais casos.
 
 ## Caso Normal com variância desconhecida
 
-## Caso Rayleight
+A primeira etapa para esse exemplo é a criação de um conjunto de dados simulados. Ao longo desta sessão testaremos ajustes com diversos tamanhos de amostra\footnote{Os ajustes foram feitos e analisado, poréo não exibiremos todos os gráficos.}, em todos os casos o processo de ajuste e criação dos dados será o mesmo.
 
-## Caso Laplace Assimétrica
+Primeiro, vamos criar um conjunto de variáveis auxiliares $X_{1i},X_{2i},X_{4i}$\footnote{Não criamos uma variável $X_{3i}$ para que a notação fique mais intuitiva , uma vez que $\beta_3$ será o intercepto associado à precisão.} tais que:
 
-\pagebreak
+\begin{equation}
+\label{aux_covar}
+\begin{aligned}
+X_1 &\sim \mathcal{G}(5,2.5),\\
+X_2 &\sim \mathcal{N}(3,4),\\
+X_4 &\sim Poisson(20).\\
+\end{aligned}
+\end{equation}
 
-# Conclussões
+Vamos então gerar uma amostra $Y_i$ tal que:
+
+\begin{equation}
+\label{def_model_norm}
+\begin{aligned}
+Y_i &\sim \mathcal{N}(\mu_i,\tau^{-1}_i),\\
+\mu_i&=\beta_0+X_{1i}\beta_1+X_{2i}\beta_2,\\
+\ln(\tau_i)&=\beta_3+X_{4i}\beta_4. 
+\end{aligned}
+\end{equation}
+
+Sendo que, neste exemplo, usamos $\vec{\beta}=(1,0.5,0.25,1,-0.04)'$ como o valor verdadeiro e tomamos como priori para $\vec{\beta}$ a distribuição Normal Multivariada com vetor de médias nulo e matriz de covariância igual a identidade.
+
+Um detalhe importante a se notar neste exemplo é que estamos trabalhando com uma distribuição que possui dois parâmetros ($\mu$ e $\tau$), desta forma, para cada elemento da amostra, temos dois preditores lineares, ou seja, mesmo com a abordagem alternativa, ainda precisaríamos resolver integrais duplas para obter a aproximação KL. Porém, de forma muito conveniente, é possível obter todos os valores esperados desejados a partir de integrais univariadas, para isto vamos usar que:
+
+$$
+\mathbb{E}[f(\vec{\eta})|y]=\mathbb{E}[\mathbb{E}[f(\vec{\eta})|\eta_2,y]|y],
+$$
+daí, se $\mathbb{E}[f(\vec{\eta})|\eta_2,y]$ tem forma analítica fechada e conhecemos algo proporcional à distribuição marginal de $\eta_2|y$, então $\mathbb{E}[f(\vec{\eta})|y]$ pode ser escrita como uma integral que depende apenas de $\eta_2$.
+
+De fato, temos que, se $\tau$ fosse conhecido, a distribuição a priori de $\eta_1$ conjugaria com a distribuição de $y$, de modo que, se $\eta_1|\eta_2 \sim \mathcal{N}(\mu_1,\tau^{-1}_1)$\footnote{Como a distribuição conjunta de $\eta_1,\eta_2$ é Normal bivariada, é possível obter $\mu_1$ e $\tau^{-1}_1$ facilmente, basta observar que se $X,Y$ tem distribuição Normal Multivariada, de modo que $X$ tem média $\mu_X$ e variância $\sigma^2_X$, $Y$ tem média $\mu_Y$  e variância $\sigma^2_Y$ e a correlação entre $X$ e $Y$ é igual à $\rho$, então $X|Y \sim \mathcal{N}\left(\mu_X+\rho\frac{\sigma_X}{\sigma_Y}(Y-\mu_Y),\left(1-\rho^2\right)\sigma^2_X\right)$}, então:
+
+\begin{equation}
+\label{cond_mu_giv_tau}
+\begin{aligned}
+\eta_1|\tau,y &\sim \mathcal{N}(\mu_1^*,\tau^{*-1}_1),\\
+\mu^*_1&=\frac{\tau_1\mu_1+\tau y}{\tau+\tau_1},\\
+\tau^{*}_1&=\tau+\tau_1. 
+\end{aligned}
+\end{equation}
+
+Daí:
+
+\begin{equation}
+\label{cond_mu_giv_tau2}
+\begin{aligned}
+\mathbb{E}[\eta_1|\eta_2,y] &= \mu_1^*,\\
+\mathbb{E}[\eta_1^2|\eta_2,y] &=\tau^{*-1}_1 + \mu_1^{*2},\\
+\mathbb{E}[\eta_1 \eta_2|\eta_2,y] &=\mu_1^*\eta_2. 
+\end{aligned}
+\end{equation}
+
+Com o resultado acima, se encontrarmos algo proporcional à distribuição marginal de $\eta_2|y$, é possível obter a média e a matriz de covariância de $\vec{\eta}$ usando Quadratura Gaussiana univariada.
+
+Para obter algo proporcional à distribuição marginal de $\eta_2|y$, basta observar que, se $Y|\eta_1,\eta_2 \sim \mathcal{N}(\eta_1,\exp\{-\eta_2\})$ e $\eta_1|\eta_2 \sim \mathcal{N}(\mu_1,\tau^{-1}_1)$, então:
+
+$$
+Y|\eta_2 \sim \mathcal{N}\left(\mu_1,\exp\{-\eta_2\}+\tau^{-1}_1\right)
+$$
+
+Ademais, vale que:
+
+$$
+f(\eta_2|y)\propto f(y)f(\eta_2). 
+$$
+
+Com os resultados descritos acima foi possível ajustar os modelos desejados com um custo computacional negligenciável.
+
+Adiante vamos exibir algumas comparações entre a distribuição posteriori de $\vec{\beta}$ aproximada pelo método KL (original e alternativo)\footnote{Vale lembrar que a abordagem original é aproximar a posteriori completa de $\vec{\beta}$ por uma Normal com mesmo vetor de médias e mesma matriz de covariância (utilizamos uma amostra obtida por MCMC da posteriori de $\beta$ para encontrar o vetor de médias e a matriz de convariância "exatas"). Em contrapartida, a abordagem alternativa faz a mesma aproximação, porém de forma sequencial, elemento a elemento da amostra. A abordagem original é substancialmente mais cara, pois exige que calculemos integrais multivariadas.} e o histograma de uma amostra da distribuição posteriori verdadeira  de $\vec{\beta}$:
+
+```{r}
+set.seed(13031998)
+
+n=100
+
+data_mean=data.frame(
+  var0=1, # Intercepto média
+  var1=rgamma(n,5,5/2),
+  var2=rnorm(n,3,2),
+  var3=0, # Intercepto variância
+  var4=0
+) %>% as.matrix
+
+data_var=data.frame(
+  var0=0, # Intercepto média
+  var1=0,
+  var2=0,
+  var3=rep(1,n), # Intercepto variância
+  var4=rpois(n,20)
+) %>% as.matrix
+
+beta_true=c(1,0.5,0.25,1,-0.04)
+k=length(beta_true)
+
+lin_pred_mean=as.matrix(data_mean)%*%beta_true
+lin_pred_var=as.matrix(data_var)%*%beta_true
+
+y=rnorm(n,lin_pred_mean,exp(-lin_pred_var/2))
+
+# index=5
+# plot(data_mean[,index]+data_var[,index],y)
+```
+
+
+```{r}
+beta_mean=beta_mean_prior=rep(0,k)
+beta_var=beta_var_prior=1*diag(k)
+
+for(i in 1:n){
+  FF=cbind(data_mean[i,],data_var[i,])
+  x_mean=t(FF)%*%beta_mean
+  Sigma=t(FF)%*%beta_var%*%FF
+  mu1=x_mean[1]
+  mu2=x_mean[2]
+  s1=Sigma[1,1]
+  s2=Sigma[2,2]
+  rho=Sigma[1,2]/sqrt(s1*s2)
+  val=rho*sqrt(s1/s2)
+  
+  x_var_adapt=(1-rho**2)*s1
+  prec_prior=1/x_var_adapt
+  f=function(x){
+    x_mean_adapt=mu1+val*(log(x)-mu2)
+    
+    prec_obs=x
+    x_var_update=1/(prec_obs+prec_prior)
+    w1=1/(1+prec_prior/prec_obs)
+    w2=1/(prec_obs/prec_prior+1)
+    x_mean_update=w1*y[i]+w2*x_mean_adapt
+    var_obs=1/prec_obs+x_var_adapt
+    
+    vals=dnorm(y[i],x_mean_adapt,sqrt(var_obs))*dlnorm(x,mu2,sqrt(s2))
+    rbind(vals,
+          log(x)*vals,
+          (log(x)**2)*vals,
+          x_mean_update*vals,
+          (x_mean_update**2+x_var_update)*vals,
+          (x_mean_update*log(x))*vals
+    )
+          
+  }
+  int_prev=cubintegrate(f,0,Inf,nVec=200,fDim=6)
+  vals_prev=int_prev$integral
+  c_prev=vals_prev[1]
+  
+  y_mean_prev=vals_prev[2]/c_prev
+  y2_mean_prev=vals_prev[3]/c_prev
+  y_s2_prev=y2_mean_prev-y_mean_prev**2
+  
+  x_mean_prev=vals_prev[4]/c_prev
+  x2_mean_prev=vals_prev[5]/c_prev
+  x_s2_prev=x2_mean_prev-x_mean_prev**2
+  
+  xy_mean_prev=vals_prev[6]/c_prev
+  cov_prev=xy_mean_prev-x_mean_prev*y_mean_prev
+  
+  # sample=mvtnorm::rmvnorm(1000000,x_mean,Sigma)
+  # mean((sample[,1]*sample[,2])*dnorm(y[i],sample[,1],exp(-sample[,2]/2)))/mean(dnorm(y[i],sample[,1],exp(-sample[,2]/2)))
+  
+  x_mean_new=c(x_mean_prev,y_mean_prev)
+  Sigma_new=matrix(c(x_s2_prev,cov_prev,cov_prev,y_s2_prev),2,2)
+  
+  At <- beta_var %*% FF %*% ginv(Sigma)
+  beta_mean <- beta_mean + At %*% (x_mean_new - x_mean)
+  beta_var <- beta_var + At %*% (Sigma_new - Sigma) %*% t(At)
+}
+```
+
+
+```{r}
+log.like=function(beta){
+  vals_mean=data_mean%*%beta
+  vals_var=data_var%*%beta
+  sum(dnorm(y,vals_mean,exp(-vals_var/2),log=TRUE))+dmvnorm(t(beta),beta_mean_prior,beta_var_prior,log=TRUE)
+}
+
+d_log_like=function(beta){calculus::derivative(function(beta){log.like(t(beta))},var=t(beta))}
+
+mode=multiroot(d_log_like,start=beta_mean)$root
+
+A=solve(-calculus::hessian(function(beta){log.like(t(beta))},var=t(mode)))
+```
+
+```{r}
+beta_mean_ref=mode
+beta_var_ref=A
+
+N=5000
+beta_sample=matrix(NA,k,N)
+acep_list=matrix(0,k,N)
+acep_p_list=matrix(0,k,N)
+beta_unit=beta_mean_ref
+cur_log_like=log.like(beta_unit)
+beta_var_list=rep(NA,k)
+for(j in 1:k){
+    beta_var_list[j]=beta_var_ref[j,j]-t(beta_var_ref[j,-j])%*%ginv(beta_var_ref[-j,-j])%*%beta_var_ref[j,-j]
+  }
+for(i in 1:N){
+  for(j in 1:k){
+    beta_mean_j=beta_mean_ref[j]+beta_var_ref[j,-j]%*%ginv(beta_var_ref[-j,-j])%*%(beta_unit[-j]-beta_mean_ref[-j])
+    beta_var_j=beta_var_list[j]
+    prop_j=rnorm(1,beta_mean_j,sqrt(beta_var_j))
+    prop=beta_unit
+    prop[j]=prop_j
+    prop_log_like=log.like(prop)
+    prop_log_val=dnorm(prop_j,beta_mean_j,sqrt(beta_var_j),log=TRUE)
+    cur_log_val=dnorm(beta_unit[j],beta_mean_j,sqrt(beta_var_j),log=TRUE)
+    acep=exp(prop_log_like-cur_log_like+cur_log_val-prop_log_val)
+    acep_list[j,i]=acep
+    if(runif(1)<acep){
+      beta_unit[j]=prop_j
+      cur_log_like=prop_log_like
+      acep_list[j,i]=1
+    }
+  }
+  beta_sample[,i]=beta_unit
+}
+beta_mean_true=rowMeans(beta_sample)
+beta_var_true=var(t(beta_sample))
+# mean(acep_list)
+```
+
+
+
+```{r}
+data_plot=data.frame()
+data_sample=pivot_longer(cbind(1:N,as.data.frame(t(beta_sample))),-1)
+names(data_sample)=c('samp','index','value')
+data_sample$index=substr(data_sample$index,2,2)
+for(index in 1:k){
+  x=seq(qnorm(1/N,beta_mean_true[index],sqrt(beta_var_true[index,index])),
+        qnorm(1-1/N,beta_mean_true[index],sqrt(beta_var_true[index,index])),
+        l=1000)
+  data_plot=rbind(data_plot,data.frame(
+    x=x,
+    fx=dnorm(x,beta_mean[index],sqrt(beta_var[index,index])),
+    label='Aprox. KL alt.',
+    index=as.character(index)
+    ))
+  data_plot=rbind(data_plot,data.frame(
+    x=x,
+    fx=dnorm(x,mode[index],sqrt(A[index,index])),
+    label='Aprox. Laplace',
+    index=as.character(index)
+    ))
+  data_plot=rbind(data_plot,data.frame(
+    x=x,
+    fx=dnorm(x,beta_mean_true[index],sqrt(beta_var_true[index,index])),
+    label='Aprox. KL orig.',
+    index=as.character(index)
+    ))
+
+}
+
+data_plot$index=as.factor(data_plot$index)
+data_sample$index=as.factor(data_sample$index)
+levels(data_sample$index)=levels(data_plot$index)=c('beta_0',
+                                                    'beta_1',
+                                                    'beta_2',
+                                                    'beta_3',
+                                                    'beta_4')
+levels(data_sample$index)=levels(data_plot$index)=c('beta_0'=TeX('\\beta_0'),
+                                                    'beta_1'=TeX('\\beta_1'),
+                                                    'beta_2'=TeX('\\beta_2'),
+                                                    'beta_3'=TeX('\\beta_3'),
+                                                    'beta_4'=TeX('\\beta_4'))
+
+(ggplot(data_plot %>% filter(label!='Aprox. Laplace'))+
+  geom_histogram(aes(x=value,y=..density..),color='black',fill='#aaaaaa',bins=30,data=data_sample)+
+  geom_line(aes(x=x,y=fx,color=label,linetype=label=='Aprox. KL orig.'))+
+  scale_color_manual('',values=c('blue','red','green'))+
+  scale_y_continuous(expand=c(0,0,0,0.5),limits=c(0,NA))+
+  facet_wrap(.~index,scales='free')+
+  guides(linetype='none')+
+  theme_bw()+
+  theme(legend.position="bottom"))
+```
+
+Podemos observar pelo gráfico acima que a abordagem original produz uma aproximação que é essencialmente igual à distribuição verdadeira (representa bem ela), em contrapartida, a abordagem alternativa produz uma distribuição que é significativamente diferente da distribuição correta, especialmente para o parâmetro $\beta_0$, que representa o intercepto da média. Apesar da discrepância significativa entre a distribuição aproximada pelo método alternativo e a distribuição correta, podemos observar no gráfico a seguir que a distribuição preditiva para as observações não é tão diferente:
+
+```{r fig.height=3, fig.width=6}
+
+  vals_mean_mean=data_mean%*%beta_mean
+  vals_var_mean=data_var%*%beta_mean
+  
+  vals_mean_var=diag(data_mean%*%beta_var%*%t(data_mean))
+  vals_var_var=diag(data_var%*%beta_var%*%t(data_var))
+  
+  vals_cov=diag(data_var%*%beta_var%*%t(data_mean))
+  
+  mu0 <- vals_mean_mean + vals_cov
+  c0 <- exp(-vals_var_mean - vals_var_var / 2) / (vals_mean_var)
+  helper <- -3 + 3 * sqrt(1 + 2 * vals_var_var / 3)
+  # helper=Qt[2,2]
+  # print(c0)
+  # print(ft)
+  # print(Qt)
+  alpha <- 1 / helper
+  beta <- alpha * exp(-vals_var_mean - vals_var_var / 2)
+  
+  nu <- 2 * alpha
+  sigma2 <- (beta / alpha) * (1 + 1 / c0)
+  
+  y_pred_mean=mu0
+  y_pred_icl=qt(0.025,nu) * sqrt(sigma2) + mu0
+  y_pred_icu=qt(0.975,nu) * sqrt(sigma2) + mu0
+  
+  vals_mean_sample=data_mean%*%beta_sample
+  vals_var_sample=data_var%*%beta_sample
+  
+  y_sample=(rnorm(prod(dim(vals_mean_sample))) %>% matrix(n,N))*exp(-vals_var_sample/2)+vals_mean_sample
+  
+  y_pred_mean_true=rowMeans(y_sample)
+  y_pred_icl_true=apply(y_sample,1,function(x){quantile(x,0.025)})
+  y_pred_icu_true=apply(y_sample,1,function(x){quantile(x,0.975)})
+  
+  
+  vals_mean_true=data_mean%*%beta_true
+  vals_std_true=exp(-data_var%*%beta_true/2)
+  normalize=function(x){(x-vals_mean_true)/vals_std_true}
+  
+  data_plot=data.frame(index=1:n,
+                       mean_pred=y_pred_mean,
+                       icu=y_pred_icu,
+                       icl=y_pred_icl,
+                       label='Aprox. KL',
+                       scale='Escala original')
+  data_plot=rbind(data_plot,data.frame(index=1:n,
+                                       mean_pred=y_pred_mean_true,
+                                       icu=y_pred_icu_true,
+                                       icl=y_pred_icl_true,
+                                       label='Verdadeiro',
+                                       scale='Escala original'))
+  data_plot=rbind(data_plot,data.frame(index=1:n,
+                                       mean_pred=y,
+                                       icu=NA,
+                                       icl=NA,
+                                       label='Observações',
+                                       scale='Escala original'))
+  
+  data_plot=rbind(data_plot,data.frame(index=1:n,
+                                       mean_pred=y_pred_mean %>% normalize,
+                                       icu=y_pred_icu %>% normalize,
+                                       icl=y_pred_icl %>% normalize,
+                                       label='Aprox. KL',
+                                       scale='Escala padronizada'))
+  data_plot=rbind(data_plot,data.frame(index=1:n,
+                                       mean_pred=y_pred_mean_true %>% normalize,
+                                       icu=y_pred_icu_true %>% normalize,
+                                       icl=y_pred_icl_true %>% normalize,
+                                       label='Verdadeiro',
+                                       scale='Escala padronizada'))
+  data_plot=rbind(data_plot,data.frame(index=1:n,
+                                       mean_pred=y %>% normalize,
+                                       icu=NA,
+                                       icl=NA,
+                                       label='Observações',
+                                       scale='Escala padronizada'))
+  
+  (ggplot(data_plot)+
+  geom_point(aes(x=index,y=mean_pred,color=label,fill=label,shape=label))+
+  geom_errorbar(aes(x=index,
+                  ymin=icl,
+                  ymax=icu,
+                  color=label,
+                  fill=label,
+                  shape=label),alpha=0.8,linetype='dashed')+
+  scale_x_continuous('Índice da amostra',limits=c(0,20))+
+  scale_y_continuous('Valor observado')+
+  scale_color_manual('',values=c('#4444ff','black','#ff4444'))+
+  scale_shape_manual('',values=c(3,16,4))+
+  scale_fill_manual('',values=c('#4444ff','black','#ff4444'))+
+  labs(title=TeX('Distribuição preditiva para os primeiros 20 elementos da amostra'))+
+  theme_bw()+
+  theme(legend.position="bottom")+
+    facet_wrap(.~scale,scale='free'))
+```
+
+
+Veja que as estimativas pontuais e intervalares (intervalos simétricos centrados na média com $95\%$ de credibilidade) para as observações não são muito discrepantes, de modo geral. Esse comportamento acontece devido a uma certa "compensação" do viés da aproximação KL alternativa: Apesar do intercepto estar subestimado, o efeito das covariáveis está superestimado. Ademais, apesar de visualmente a posteriori aproximada pelo método KL alternativo estar muito discrepante, a magnitude do viés não é de fato tão significativa, de modo que o impacto na distribuição preditiva é pequeno, mesmo se não houvesse compensação no viés.
+
+É relevante observar também a forma como o tamanho da amostra afeta a qualidade das aproximações. Infelizmente, teremos de omitir os gráficos associados a essa análise para não ultrapassar o limite estipulado de páginas, contudo, de modo geral, observamos que a qualidade da aproximação aumenta conforme o tamanho da amostra aumente e, de forma análoga, a aproximação fica pior conforme o tamanho da amostra diminui. Dito isso, para amostras de tamanho superior a $20$ a qualidade do ajuste ficou aceitável, sendo que, como veremos adiante, há uma redução massiva no custo computacional ao se utilizar esta abordagem.
+
+A última comparação que precisamos fazer antes de finalizar esta aplicação é com respeito ao tempo computacional, especificamente, gostaríamos de comparar o tempo de execução do método KL alternativo com o tempo de amostragem da abordagem por MCMC. Naturalmente, a comparação entre o tempo de execução dos métodos não é direta, afinal, um dos métodos exige amostragem, sendo que seu tempo de execução pode ser reduzido ao simplesmente tomar uma amostra menor (diminuindo a precisão das estimativas). Além disso, a comparação entre a abordagem por MCMC não é muito justa, uma vez que estamos usando a aproximação KL como proposta, o que faz com que a cadeia gerada convirja muito mais rápido do que o usual (como referência, a taxa média de aceitação do passo de Metrolis foi de cerca de $96\%$, isto é, a proposta utilizada é bem próxima da distribuição verdadeira, o que agiliza bastante a convergência do algoritmo) e tenha uma auto correlação também muito baixa.
+
+Com todas essas observações em mente, concluímos que a forma mais "justa" de comparar as duas abordagens seria através do tempo necessário para gerar amostras de tamanhos variados da posteriori usando cada um dos métodos. Na tabela a seguir vamos exibir os tempos registrados:
+
+\renewcommand{\figurename}{Tabela}
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.7 \textwidth]{table_1.png}
+\caption{Comparação entre o tempo de execução (em segundos) de cada um dos métodos. Vale destacar que este tempo inclui o tempo de ajuste do modelo e o tempo para amostrar da posteriori (no caso do método MCMC os dois processos são inseparáveis), ademais, para a amostra obtida pelo método MCMC, não foi feito \textit{burn-in} e nem nenhum tipo de checagem quanto a convergência da cadeia.}
+\label{img:plot1}
+\end{figure}
+
+A tabela acima mostra claramente que a abordagem KL alternativa é muito superior em termos de custo computacional, sendo o ajuste e amostragem praticamente instantâneos, ademais, essa abordagem também escala muito melhor com o tamanho da amostra desejada, quase não havendo aumento no tempo de execução para se gerar amostras maiores. 
+
+# Conclusões
+
+Levando em conta todas as análises feitas para este projeto (incluindo algumas que não entraram neste documento, para manter a brevidade), podemos concluir que a abordagem proposta oferece um custo computacional baixíssimo em troca de uma pequena (mas significativa) perda na precisão, sendo que a perda de precisão vem quase completamente da parte sequencial da metodologia (i.e., a aproximação da posteriori por uma gaussiana via Teorema da Projeção introduz pouco erro nas estimativas). Tendo isso em mente, uma progressão natural para este trabalho seria buscar formas de mitigar o erro de aproximação devido à parte sequencial (talvez fazer a atualização da posteriori por subconjuntos não unitários da amostra, por exemplo). Caso seja possível obter um ajuste que mantenha o custo computacional, mas apresente uma precisão maior na aproximação da posteriori (o que é possível, pois vimos que a aproximação pela abordagem KL original é muito boa), então teríamos um método muito geral (toda a metodologia descrita vale para qualquer dado cuja distribuição pertença à família exponencial) e bem acessível.
+
+De modo geral, acredito que podemos considerar que o projeto foi bem sucedido, uma vez que os resultados obtidos tanto para o caso apresentado como para os casos omitidos (Rayleigh e Laplace Assimétrico) foram satisfatórios. Ademais, acredito que o trabalho tenha permitido o uso de diversos conceitos e métodos vistos ao longo da disciplina de Estatística Computacional, de modo que o desenvolvimento deste projeto esteve bem alinhado com o conteúdo trabalhado em aula.
 
 \pagebreak
 
